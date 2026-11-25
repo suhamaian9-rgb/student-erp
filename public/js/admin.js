@@ -31,6 +31,7 @@
     { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
     { id: "feedback", label: "Feedback", icon: "message-square" },
     { id: "notifications", label: "Send Notice", icon: "megaphone" },
+    { id: "reset-passwords", label: "Reset Passwords", icon: "lock" },
     { id: "profile", label: "My Profile", icon: "user-circle" },
   ];
 
@@ -659,8 +660,14 @@
             <select class="form-select" id="t-dept"><option value="">— Optional —</option>${depts.map((d) => `<option value="${d.id}" ${item?.department_id === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
           </div>
           <div class="col-md-4"><label class="form-label">Qualification</label><input class="form-control" id="t-qual" value="${esc(item?.qualification || "")}"></div>
-          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Save Teacher</button></div>
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            ${item ? `<button type="button" class="btn btn-outline-warning" id="t-reset-pw-btn"><i data-lucide="lock" class="me-1"></i> Reset Password</button>` : `<span></span>`}
+            <button class="btn btn-primary" type="submit">Save Teacher</button>
+          </div>
         </form>`);
+      if (item) {
+        document.getElementById("t-reset-pw-btn").onclick = () => showResetPasswordModal(item, "");
+      }
       document.getElementById("teach-form").onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -757,8 +764,14 @@
           <div class="col-md-3"><label class="form-label">Semester</label>
             <select class="form-select" id="st-sem"><option value="">— Select —</option>${semesters.map((s) => `<option value="${s.id}" ${item?.semester_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Save Student</button></div>
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            ${item ? `<button type="button" class="btn btn-outline-warning" id="st-reset-pw-btn"><i data-lucide="lock" class="me-1"></i> Reset Password</button>` : `<span></span>`}
+            <button class="btn btn-primary" type="submit">Save Student</button>
+          </div>
         </form>`);
+      if (item) {
+        document.getElementById("st-reset-pw-btn").onclick = () => showResetPasswordModal(item, "student@prstu");
+      }
       document.getElementById("stud-form").onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -1289,6 +1302,52 @@
     };
   }
 
+  async function loadResetPasswords(signal) {
+    const [students, teachers] = await Promise.all([
+      ERP.cachedApi("/api/admin/students", { signal }),
+      ERP.cachedApi("/api/admin/teachers", { signal }),
+    ]);
+    const rows = [
+      ...students.map((s) => ({
+        ...s,
+        userRole: "Student",
+        code: s.roll_number || "—",
+        defaultPw: "student@prstu",
+      })),
+      ...teachers.map((t) => ({
+        ...t,
+        userRole: "Teacher",
+        code: t.employee_id || "—",
+        defaultPw: "",
+      })),
+    ];
+
+    renderTableWithSearch({
+      title: "Password Reset Center",
+      rows,
+      filters: [
+        { id: "role", label: "Role", getValue: (r) => r.userRole },
+      ],
+      columns: [
+        { label: "Role", sortValue: (r) => r.userRole, render: (r) => `<span class="badge ${r.userRole === "Student" ? "bg-primary" : "bg-secondary"}">${esc(r.userRole)}</span>` },
+        { label: "ID / Roll No", sortValue: (r) => r.code, render: (r) => `<code>${esc(r.code)}</code>` },
+        { label: "Name", sortValue: (r) => `${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
+        { label: "Username", sortValue: (r) => r.profiles?.username || "", render: (r) => esc(r.profiles?.username || "—") },
+        { label: "Email", sortValue: (r) => r.profiles?.email || "", render: (r) => esc(r.profiles?.email || "—") },
+        {
+          label: "Action",
+          render: (r) => `<button class="btn btn-sm btn-warning" data-reset="${r.profile_id}"><i data-lucide="lock" class="me-1"></i> Reset Password</button>`,
+        },
+      ],
+      onAction: (b) => {
+        if (b.dataset.reset) {
+          const item = rows.find((x) => x.profile_id == b.dataset.reset);
+          if (item) showResetPasswordModal(item, item.defaultPw);
+        }
+      },
+    });
+  }
+
   const tabHandlers = {
     overview: loadOverview,
     departments: loadDepartments,
@@ -1303,6 +1362,7 @@
     leaves: loadLeaves,
     feedback: loadFeedback,
     notifications: loadNotificationsForm,
+    "reset-passwords": loadResetPasswords,
     profile: async () => {
       await ERP.loadProfileWidget();
       window.renderProfileView(main, userData);
