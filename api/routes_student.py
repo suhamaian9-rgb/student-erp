@@ -203,6 +203,8 @@ def manage_leaves():
         err = require_fields(data, ["start_date", "end_date", "reason"])
         if err:
             return err
+        if str(data["end_date"]) < str(data["start_date"]):
+            return jsonify({"error": "end_date must be on or after start_date"}), 400
         resp = g.db.table("leave_applications").insert({
             "applicant_id": g.profile["id"],
             "applicant_role": "student",

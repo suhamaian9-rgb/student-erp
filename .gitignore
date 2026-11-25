@@ -10,16 +10,25 @@ env/
 .env
 .env.local
 .env.*.local
+.env*
+!.env.example
 
 # Vercel
 .vercel
 
-# Supabase local
+# Database / Supabase configs, migrations, and workflows (keep out of public Git)
 .supabase/
+supabase/
+.github/workflows/supabase-migrate.yml
+
+# Private institutional records, rosters, and data exports
+students_list.md
+*.csv
+*.pdf
+*.sql
 
 # OS & Editor
 .DS_Store
 .vscode/
 .idea/
 *.log
-.env*

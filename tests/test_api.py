@@ -357,3 +357,50 @@ def test_student_enrolled_subjects_completed_and_running(monkeypatch):
     assert rows[0]["semester_status"] == "running"
     assert rows[1]["code"] == "CSE 1101"
     assert rows[1]["semester_status"] == "completed"
+
+
+def test_security_csrf_csp_idor_and_input_validation(monkeypatch):
+    _mock_auth(
+        monkeypatch,
+        role="teacher",
+        tables={
+            "teachers": [{"id": 2, "profile_id": "user-1"}],
+            "subjects": [{"id": 200, "name": "Other Subject", "code": "CS999", "course_id": 10, "teacher_id": 99}],
+            "attendance_sessions": [{"id": 50, "subject_id": 200}],
+        },
+    )
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "teacher-tok")
+
+    # Strict CSP & no-store headers on API
+    me = client.get("/api/me")
+    assert me.status_code == 200
+    csp = me.headers.get("Content-Security-Policy", "")
+    assert "script-src 'self' https://cdn.jsdelivr.net;" in csp
+    assert "object-src 'none'" in csp
+    assert me.headers.get("Cache-Control") == "no-store"
+
+    # Cross-origin state-changing request blocked (CSRF protection)
+    csrf_resp = client.put(
+        "/api/me",
+        json={"first_name": "Test"},
+        headers={"Origin": "https://attacker.example", "Host": "localhost"},
+    )
+    assert csrf_resp.status_code == 403
+
+    # Invalid avatar URL scheme rejected
+    bad_av = client.put("/api/me", json={"avatar_url": "javascript:alert(1)"})
+    assert bad_av.status_code == 400
+
+    # Teacher IDOR on attendance update & result entry for unassigned subject
+    idor_att = client.put(
+        "/api/teacher/attendance/50",
+        json={"topic": "Hijack", "records": [{"student_id": 1, "status": "present"}]},
+    )
+    assert idor_att.status_code == 403
+
+    idor_res = client.post(
+        "/api/teacher/results",
+        json={"examination_id": 1, "student_id": 1, "subject_id": 200, "marks_obtained": 90, "max_marks": 100},
+    )
+    assert idor_res.status_code == 403

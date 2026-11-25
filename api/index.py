@@ -6,7 +6,9 @@ cookies so no backend provider URLs, keys, or tokens are exposed to the browser.
 """
 
 import os
+import re
 import sys
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -23,10 +25,24 @@ from api.routes_teacher import teacher_bp  # noqa: E402
 from api.supabase_client import get_admin_client, get_anon_client, get_user_client  # noqa: E402
 
 app = Flask(__name__, static_folder="../public", static_url_path="")
+HOST_RE = re.compile(r"^[a-zA-Z0-9.-]+(:\d{1,5})?$")
 
 app.register_blueprint(admin_bp)
 app.register_blueprint(teacher_bp)
 app.register_blueprint(student_bp)
+
+
+@app.before_request
+def enforce_same_origin_for_mutations():
+    """Block cross-origin state-changing API requests (CSRF defense-in-depth)."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/"):
+        origin = request.headers.get("Origin", "").strip()
+        referer = request.headers.get("Referer", "").strip()
+        source = origin or referer
+        if source:
+            parsed = urlparse(source)
+            if parsed.netloc and parsed.netloc != request.host:
+                return jsonify({"error": "Cross-origin request blocked"}), 403
 
 
 @app.after_request
@@ -35,8 +51,19 @@ def add_security_and_session_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; connect-src 'self'; object-src 'none'; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
+    )
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-store, private"
     refreshed = getattr(g, "refreshed_session", None)
     if refreshed and getattr(refreshed, "access_token", None):
         set_auth_cookies(
@@ -130,8 +157,15 @@ def forgot_password():
         return err
     try:
         anon = get_anon_client()
-        redirect_to = f"{request.host_url.rstrip('/')}/reset-password.html"
-        anon.auth.reset_password_for_email(str(data["email"]).strip(), {"redirect_to": redirect_to})
+        app_base = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+        if not app_base:
+            host = request.host.strip()
+            scheme = "https" if (os.environ.get("VERCEL") or request.is_secure) else "http"
+            if HOST_RE.match(host):
+                app_base = f"{scheme}://{host}"
+        redirect_to = f"{app_base}/reset-password.html" if app_base else None
+        opts = {"redirect_to": redirect_to} if redirect_to else {}
+        anon.auth.reset_password_for_email(str(data["email"]).strip(), opts)
     except Exception:
         pass
     return jsonify({"message": "If an account exists for that email, a reset link has been sent."}), 200
@@ -187,6 +221,11 @@ def current_user_profile():
         for k in ["first_name", "last_name", "gender", "phone", "address", "avatar_url"]
         if k in data
     }
+    if "avatar_url" in allowed:
+        av = str(allowed["avatar_url"] or "").strip()
+        if av and not (av.startswith("https://") or av.startswith("/")):
+            return jsonify({"error": "Invalid avatar URL"}), 400
+        allowed["avatar_url"] = av
     if not allowed:
         return jsonify({"error": "No valid profile fields provided"}), 400
     resp = g.db.table("profiles").update(allowed).eq("id", g.profile["id"]).execute()

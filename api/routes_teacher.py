@@ -1,5 +1,6 @@
 """Teacher REST API routes for the College ERP System."""
 
+import math
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
 from api.helpers import compute_grade, require_fields, run_parallel, safe_error
@@ -152,17 +153,19 @@ def manage_attendance():
 
         if request.method == "GET":
             subject_id = request.args.get("subject_id")
+            subs = g.db.table("subjects").select("id").eq("teacher_id", teacher["id"]).execute().data or []
+            sub_ids = [s["id"] for s in subs]
+            if not sub_ids:
+                return jsonify([]), 200
             query = (
                 g.db.table("attendance_sessions")
                 .select("*, subjects(id, name, code), academic_sessions(id, name), attendance_records(id, student_id, status, remarks, updated_at, students(id, roll_number, profiles(first_name, last_name)))")
             )
             if subject_id:
+                if str(subject_id) not in {str(sid) for sid in sub_ids}:
+                    return jsonify({"error": "You are not assigned to this subject"}), 403
                 query = query.eq("subject_id", subject_id)
             else:
-                subs = g.db.table("subjects").select("id").eq("teacher_id", teacher["id"]).execute().data or []
-                sub_ids = [s["id"] for s in subs]
-                if not sub_ids:
-                    return jsonify([]), 200
                 query = query.in_("subject_id", sub_ids)
             resp = query.order("attendance_date", desc=True).limit(100).execute()
             return jsonify(resp.data or []), 200
@@ -220,6 +223,29 @@ def manage_attendance():
 def update_attendance(att_session_id: int):
     """Update attendance records with audit tracking (`updated_by`)."""
     try:
+        teacher = _get_teacher_record()
+        if not teacher:
+            return jsonify({"error": "Teacher record not found"}), 404
+        sess_rows = (
+            g.db.table("attendance_sessions")
+            .select("id, subject_id")
+            .eq("id", att_session_id)
+            .execute()
+            .data
+        )
+        if not sess_rows:
+            return jsonify({"error": "Attendance session not found"}), 404
+        owned = (
+            g.db.table("subjects")
+            .select("id")
+            .eq("id", sess_rows[0]["subject_id"])
+            .eq("teacher_id", teacher["id"])
+            .execute()
+            .data
+        )
+        if not owned:
+            return jsonify({"error": "You are not assigned to this subject"}), 403
+
         data = request.get_json(silent=True) or {}
         err = require_fields(data, ["records"])
         if err:
@@ -283,9 +309,20 @@ def manage_results():
         if err:
             return err
 
+        sub_check = (
+            g.db.table("subjects")
+            .select("id")
+            .eq("id", data["subject_id"])
+            .eq("teacher_id", teacher["id"])
+            .execute()
+            .data
+        )
+        if not sub_check:
+            return jsonify({"error": "You are not assigned to this subject"}), 403
+
         marks = float(data["marks_obtained"])
         max_m = float(data["max_marks"])
-        if marks < 0 or marks > max_m:
+        if not (math.isfinite(marks) and math.isfinite(max_m)) or max_m <= 0 or marks < 0 or marks > max_m:
             return jsonify({"error": "marks_obtained must be between 0 and max_marks"}), 400
 
         payload = {
@@ -322,6 +359,8 @@ def manage_leaves():
         err = require_fields(data, ["start_date", "end_date", "reason"])
         if err:
             return err
+        if str(data["end_date"]) < str(data["start_date"]):
+            return jsonify({"error": "end_date must be on or after start_date"}), 400
         resp = g.db.table("leave_applications").insert({
             "applicant_id": g.profile["id"],
             "applicant_role": "teacher",

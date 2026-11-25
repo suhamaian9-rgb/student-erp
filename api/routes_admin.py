@@ -1,6 +1,7 @@
 """Admin / HOD REST API routes for the College ERP System."""
 
 from datetime import datetime, timezone
+import math
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
 from api.helpers import compute_grade, require_fields, run_parallel, safe_error
@@ -215,13 +216,10 @@ def manage_examinations():
 
 
 def _create_user_account(email: str, password: str, first_name: str, last_name: str, role: str, gender: str = "M", phone: str = "", address: str = "", username: str | None = None):
-    """Create a Supabase Auth user + update their profile using the server-only service key."""
+    """Create an auth user and update their profile via the server-only admin client."""
     admin_client = get_admin_client()
     if not admin_client:
-        raise RuntimeError(
-            "SUPABASE_SERVICE_ROLE_KEY is not configured on the server. "
-            "Add it to Vercel Environment Variables (never expose to browser) to create users from Admin."
-        )
+        raise RuntimeError("User provisioning service is not configured on the server.")
     clean_username = username.strip().lower() if username and username.strip() else None
     created = admin_client.auth.admin.create_user({
         "email": email,
@@ -496,7 +494,7 @@ def manage_results():
                 return err
             marks = float(data["marks_obtained"])
             max_m = float(data["max_marks"])
-            if marks < 0 or marks > max_m:
+            if not (math.isfinite(marks) and math.isfinite(max_m)) or max_m <= 0 or marks < 0 or marks > max_m:
                 return jsonify({"error": "marks_obtained must be between 0 and max_marks"}), 400
             payload = {
                 "examination_id": data["examination_id"],
