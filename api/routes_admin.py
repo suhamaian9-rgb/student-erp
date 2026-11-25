@@ -399,6 +399,27 @@ def manage_students():
         return safe_error(exc)
 
 
+@admin_bp.route("/reset-password", methods=["POST"])
+@require_role("admin")
+def admin_reset_user_password():
+    """Allow an admin to reset a student or teacher password without email/SMTP."""
+    data = request.get_json(silent=True) or {}
+    err = require_fields(data, ["profile_id", "password"])
+    if err:
+        return err
+    new_pw = str(data["password"])
+    if len(new_pw) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    admin_client = get_admin_client()
+    if not admin_client:
+        return jsonify({"error": "Admin auth service unavailable"}), 500
+    try:
+        admin_client.auth.admin.update_user_by_id(str(data["profile_id"]), {"password": new_pw})
+        return jsonify({"reset": True}), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
 @admin_bp.route("/enrollments", methods=["GET", "POST", "DELETE"])
 @require_role("admin")
 def manage_enrollments():

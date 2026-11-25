@@ -211,47 +211,6 @@ def logout_user():
     return resp
 
 
-@app.route("/api/auth/forgot-password", methods=["POST"])
-def forgot_password():
-    """Trigger a password reset email without exposing account existence."""
-    data = request.get_json(silent=True) or {}
-    err = require_fields(data, ["email"])
-    if err:
-        return err
-    try:
-        anon = get_anon_client()
-        app_base = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
-        if not app_base:
-            host = request.host.strip()
-            scheme = "https" if (os.environ.get("VERCEL") or request.is_secure) else "http"
-            if HOST_RE.match(host):
-                app_base = f"{scheme}://{host}"
-        redirect_to = f"{app_base}/reset-password.html" if app_base else None
-        opts = {"redirect_to": redirect_to} if redirect_to else {}
-        anon.auth.reset_password_for_email(str(data["email"]).strip(), opts)
-    except Exception:
-        pass
-    return jsonify({"message": "If an account exists for that email, a reset link has been sent."}), 200
-
-
-@app.route("/api/auth/reset-password", methods=["POST"])
-def reset_password():
-    """Update password using a recovery access token."""
-    data = request.get_json(silent=True) or {}
-    err = require_fields(data, ["access_token", "password"])
-    if err:
-        return err
-    new_pw = str(data["password"])
-    if len(new_pw) < 6:
-        return jsonify({"error": "Password must be at least 6 characters"}), 400
-    try:
-        client = get_user_client(str(data["access_token"]).strip())
-        client.auth.update_user({"password": new_pw})
-        return jsonify({"updated": True}), 200
-    except Exception:
-        return jsonify({"error": "Invalid or expired reset link"}), 400
-
-
 @app.route("/api/me", methods=["GET", "PUT"])
 @require_auth
 def current_user_profile():

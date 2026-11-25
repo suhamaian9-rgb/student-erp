@@ -8,7 +8,6 @@
   const idInput = document.getElementById("identifier");
   const pwInput = document.getElementById("password");
   const togglePw = document.getElementById("toggle-pw");
-  const forgotForm = document.getElementById("forgot-form");
   const authCard = document.getElementById("auth-card");
   const mascot = document.getElementById("mascot-buddy");
   const hero = document.getElementById("auth-hero");
@@ -140,26 +139,6 @@
         loginBtn.disabled = false;
         loginBtn.innerHTML = `<i data-lucide="log-in" class="me-1"></i> Sign In`;
         refreshIcons();
-      }
-    });
-  }
-
-  if (forgotForm) {
-    forgotForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const forgotAlert = document.getElementById("forgot-alert");
-      const email = document.getElementById("reset-email").value.trim();
-      try {
-        const res = await fetch("/api/auth/forgot-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Unable to process request.");
-        showAlert(forgotAlert, data.message, "success");
-      } catch (err) {
-        showAlert(forgotAlert, err.message);
       }
     });
   }

@@ -34,6 +34,39 @@
     { id: "profile", label: "My Profile", icon: "user-circle" },
   ];
 
+  function showResetPasswordModal(item, defaultPw = "") {
+    const fullName = `${item?.profiles?.first_name || ""} ${item?.profiles?.last_name || ""}`.trim() || "User";
+    openModal(`Reset Password — ${esc(fullName)}`, `
+      <form id="admin-reset-pw-form" class="row g-3">
+        <div class="col-12">
+          <p class="small text-muted mb-0">Set a new password for <strong>${esc(fullName)}</strong> (${esc(item?.profiles?.email || "")}).</p>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="arp-pw">New Password</label>
+          <input type="text" class="form-control" id="arp-pw" minlength="6" value="${esc(defaultPw)}" placeholder="Minimum 6 characters" required>
+        </div>
+        <div class="col-12 text-end">
+          <button type="submit" class="btn btn-warning">Update Password</button>
+        </div>
+      </form>`);
+    document.getElementById("admin-reset-pw-form").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await ERP.api("/api/admin/reset-password", {
+          method: "POST",
+          body: JSON.stringify({
+            profile_id: item.profile_id,
+            password: document.getElementById("arp-pw").value,
+          }),
+        });
+        modal.hide();
+        ERP.showToast(`Password updated for ${fullName}!`);
+      } catch (err) {
+        ERP.showToast(err.message, "danger");
+      }
+    };
+  }
+
   function openModal(title, html) {
     modalTitle.textContent = title;
     modalBody.innerHTML = html;
@@ -671,11 +704,16 @@
           label: "Actions",
           render: (r) => `
             <button class="btn btn-sm btn-outline-primary me-1" data-edit="${r.id}">Edit</button>
+            <button class="btn btn-sm btn-outline-warning me-1" data-reset="${r.profile_id}">Reset PW</button>
             <button class="btn btn-sm btn-outline-danger" data-del="${r.profile_id}">Delete</button>`,
         },
       ],
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.reset) {
+          const item = rows.find((x) => x.profile_id == b.dataset.reset);
+          return showResetPasswordModal(item, "");
+        }
         if (b.dataset.del) {
           const item = rows.find((x) => x.profile_id == b.dataset.del);
           const ok = await ERP.confirmAction({
@@ -775,11 +813,16 @@
           label: "Actions",
           render: (r) => `
             <button class="btn btn-sm btn-outline-primary me-1" data-edit="${r.id}">Edit</button>
+            <button class="btn btn-sm btn-outline-warning me-1" data-reset="${r.profile_id}">Reset PW</button>
             <button class="btn btn-sm btn-outline-danger" data-del="${r.profile_id}">Delete</button>`,
         },
       ],
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.reset) {
+          const item = rows.find((x) => x.profile_id == b.dataset.reset);
+          return showResetPasswordModal(item, "student@prstu");
+        }
         if (b.dataset.del) {
           const item = rows.find((x) => x.profile_id == b.dataset.del);
           const ok = await ERP.confirmAction({

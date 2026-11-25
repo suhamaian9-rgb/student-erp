@@ -116,8 +116,8 @@
               <input class="form-check-input" type="checkbox" id="remember-me" checked>
               <label class="form-check-label small" for="remember-me">Keep me signed in</label>
             </div>
-            <a href="#" class="small text-decoration-none fw-medium" data-bs-toggle="modal" data-bs-target="#forgotModal">
-              Forgot password?
+            <a href="#" class="small text-decoration-none fw-medium" data-bs-toggle="modal" data-bs-target="#helpSignInModal">
+              Need help signing in?
             </a>
           </div>
 
@@ -129,26 +129,25 @@
     </main>
   </div>
 
-  <!-- Password Reset Modal -->
-  <div class="modal fade" id="forgotModal" tabindex="-1" aria-hidden="true">
+  <!-- Sign-In Help Modal -->
+  <div class="modal fade" id="helpSignInModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title fw-bold">Reset Password</h5>
+          <h5 class="modal-title fw-bold">Sign-In Assistance</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <form id="forgot-form">
-          <div class="modal-body">
-            <p class="small text-muted">Enter your registered university email address to receive a password reset link.</p>
-            <div id="forgot-alert" class="alert d-none"></div>
-            <label for="reset-email" class="form-label">Email Address</label>
-            <input type="email" class="form-control" id="reset-email" required placeholder="Enter registered email">
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            <button type="submit" class="btn btn-primary">Send Reset Link</button>
-          </div>
-        </form>
+        <div class="modal-body">
+          <p class="small text-muted mb-2">
+            Use your assigned <strong>University Username</strong> (such as your roll number) or registered email address to sign in.
+          </p>
+          <p class="small text-muted mb-0">
+            Forgot your password? Contact your <strong>Department Office or University Admin</strong>—they can reset your password immediately from the Admin Portal.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
+        </div>
       </div>
     </div>
   </div>
