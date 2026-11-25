@@ -4,8 +4,15 @@ from functools import wraps
 from flask import g, jsonify, request
 from api.supabase_client import get_anon_client, get_user_client
 
+ACCESS_COOKIE = "erp_access_token"
+REFRESH_COOKIE = "erp_refresh_token"
 
-def _extract_bearer_token() -> str | None:
+
+def _extract_token() -> str | None:
+    """Read JWT from HttpOnly cookie first, falling back to Authorization header."""
+    cookie_token = request.cookies.get(ACCESS_COOKIE, "").strip()
+    if cookie_token:
+        return cookie_token
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
@@ -14,19 +21,19 @@ def _extract_bearer_token() -> str | None:
 
 
 def require_auth(fn):
-    """Verify the Supabase JWT and load the user's profile from the database."""
+    """Verify the session token and load the user's profile from the database."""
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        token = _extract_bearer_token()
+        token = _extract_token()
         if not token:
-            return jsonify({"error": "Missing or invalid Authorization header"}), 401
+            return jsonify({"error": "Authentication required"}), 401
 
         try:
             anon = get_anon_client()
             user_resp = anon.auth.get_user(token)
             user = getattr(user_resp, "user", None)
             if not user:
-                return jsonify({"error": "Invalid or expired session token"}), 401
+                return jsonify({"error": "Invalid or expired session"}), 401
 
             db = get_user_client(token)
             profile_resp = (
@@ -42,7 +49,6 @@ def require_auth(fn):
             if not profile.get("is_active", True):
                 return jsonify({"error": "Account is deactivated"}), 403
 
-            # Attach authenticated context to Flask's request-local `g`
             g.access_token = token
             g.user = user
             g.profile = profile

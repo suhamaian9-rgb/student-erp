@@ -1,32 +1,28 @@
-"""Automated unit, security header, and route guard tests for the University ERP Flask API."""
+"""Automated unit, privacy, security header, and route guard tests for the University ERP API."""
 
 from api.helpers import compute_grade
 from api.index import app
 
 
-def test_public_endpoints_and_security_headers():
+def test_public_endpoints_and_no_config_leak():
     client = app.test_client()
     health = client.get("/api/health")
     assert health.status_code == 200
-    assert health.get_json()["status"] == "ok"
+    assert health.get_json() == {"status": "ok", "service": "University ERP"}
     assert health.headers.get("X-Content-Type-Options") == "nosniff"
     assert health.headers.get("X-Frame-Options") == "DENY"
     assert health.headers.get("Cache-Control") == "no-store"
 
-    cfg = client.get("/api/config")
-    assert cfg.status_code == 200
-    assert "supabaseUrl" in cfg.get_json()
-    assert "supabaseAnonKey" in cfg.get_json()
-    assert "service_role" not in str(cfg.get_json()).lower()
-
-    idx = client.get("/")
-    assert idx.status_code == 200
+    # /api/config must not exist so Supabase URL/keys are never exposed to browser DevTools
+    assert client.get("/api/config").status_code == 404
+    assert client.get("/").status_code == 200
 
 
-def test_auth_login_validation_and_guards():
+def test_auth_login_logout_and_guards():
     client = app.test_client()
     assert client.post("/api/auth/login", json={}).status_code == 400
     assert client.post("/api/auth/login", json={"identifier": "bad!user", "password": "123"}).status_code == 401
+    assert client.post("/api/auth/logout").status_code == 200
 
     protected_paths = [
         "/api/me",

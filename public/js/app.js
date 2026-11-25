@@ -1,40 +1,21 @@
 /**
- * Shared frontend utilities for the College ERP Management System.
- * Handles Supabase Auth, authenticated API calls, XSS-safe rendering,
- * shared sidebar/topbar shell, toast notifications, pagination, and CSV export.
+ * Shared frontend utilities for the University ERP Portal.
+ * All authentication and API requests use same-origin HttpOnly session cookies.
  */
 
 window.ERP = (() => {
-  let supabaseClient = null;
-  let currentSession = null;
   let currentUserData = null;
 
-  async function initSupabase() {
-    if (supabaseClient) return supabaseClient;
-    const res = await fetch("/api/config");
-    if (!res.ok) throw new Error("Failed to load Supabase configuration");
-    const cfg = await res.json();
-    supabaseClient = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
-    return supabaseClient;
-  }
-
-  async function getAccessToken() {
-    const sb = await initSupabase();
-    const { data } = await sb.auth.getSession();
-    currentSession = data.session;
-    return currentSession ? currentSession.access_token : null;
-  }
-
   async function api(path, options = {}) {
-    const token = await getAccessToken();
     const headers = {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    const res = await fetch(path, { ...options, headers });
+    const res = await fetch(path, {
+      ...options,
+      headers,
+      credentials: "same-origin",
+    });
     const text = await res.text();
     let payload = {};
     try {
@@ -43,8 +24,10 @@ window.ERP = (() => {
       payload = { error: text };
     }
     if (res.status === 401) {
-      window.location.href = "/";
-      throw new Error("Session expired. Please log in again.");
+      if (window.location.pathname !== "/") {
+        window.location.href = "/";
+      }
+      throw new Error(payload.error || "Session expired. Please sign in again.");
     }
     if (!res.ok) {
       throw new Error(payload.error || `Request failed (${res.status})`);
@@ -71,7 +54,12 @@ window.ERP = (() => {
       container.style.zIndex = "1080";
       document.body.appendChild(container);
     }
-    const bgClass = type === "danger" ? "text-bg-danger" : type === "warning" ? "text-bg-warning" : "text-bg-success";
+    const bgClass =
+      type === "danger"
+        ? "text-bg-danger"
+        : type === "warning"
+        ? "text-bg-warning"
+        : "text-bg-success";
     const toastEl = document.createElement("div");
     toastEl.className = `toast align-items-center ${bgClass} border-0`;
     toastEl.setAttribute("role", "alert");
@@ -87,12 +75,6 @@ window.ERP = (() => {
   }
 
   async function requireAuth(expectedRole) {
-    const sb = await initSupabase();
-    const { data } = await sb.auth.getSession();
-    if (!data.session) {
-      window.location.href = "/";
-      return null;
-    }
     try {
       const me = await api("/api/me");
       currentUserData = me;
@@ -102,17 +84,21 @@ window.ERP = (() => {
         return null;
       }
       return me;
-    } catch (err) {
-      await sb.auth.signOut();
+    } catch {
       window.location.href = "/";
       return null;
     }
   }
 
   async function logout() {
-    const sb = await initSupabase();
-    await sb.auth.signOut();
-    window.location.href = "/";
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } finally {
+      window.location.href = "/";
+    }
   }
 
   function renderShell({ title, roleLabel, navItems, onTabChange, user }) {
@@ -124,7 +110,10 @@ window.ERP = (() => {
     if (roleBadge) roleBadge.textContent = roleLabel;
     if (pageTitle) pageTitle.textContent = title;
     if (userBadge && user?.profile) {
-      const fullName = `${user.profile.first_name || ""} ${user.profile.last_name || ""}`.trim() || user.profile.email;
+      const fullName =
+        `${user.profile.first_name || ""} ${user.profile.last_name || ""}`.trim() ||
+        user.profile.username ||
+        user.profile.email;
       userBadge.textContent = fullName;
     }
 
@@ -153,7 +142,6 @@ window.ERP = (() => {
       });
     }
 
-    // Mobile sidebar toggle
     const toggleBtn = document.getElementById("sidebar-toggle");
     const backdrop = document.getElementById("erp-backdrop");
     if (toggleBtn) {
@@ -230,7 +218,10 @@ window.ERP = (() => {
 
   function exportCsv(filename, headers, rows) {
     const escapeCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const csv = [headers.map(escapeCell).join(","), ...rows.map((r) => r.map(escapeCell).join(","))].join("\n");
+    const csv = [
+      headers.map(escapeCell).join(","),
+      ...rows.map((r) => r.map(escapeCell).join(",")),
+    ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -253,7 +244,6 @@ window.ERP = (() => {
   }
 
   return {
-    initSupabase,
     api,
     escapeHtml,
     showToast,
