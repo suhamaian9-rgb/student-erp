@@ -652,14 +652,29 @@
           <div class="col-md-4"><label class="form-label">First Name</label><input class="form-control" id="t-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
           <div class="col-md-4"><label class="form-label">Last Name</label><input class="form-control" id="t-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
           <div class="col-md-4"><label class="form-label">Username</label><input class="form-control" id="t-user" value="${esc(item?.profiles?.username || "")}" placeholder="e.g. prof-smith"></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="t-email" value="${esc(item?.profiles?.email || "")}" required></div>
           ${!item ? `
-          <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="t-email" required></div>
-          <div class="col-md-6"><label class="form-label">Password</label><input type="password" class="form-control" id="t-pw" minlength="6" required></div>` : ""}
+          <div class="col-md-6"><label class="form-label">Password</label><input type="password" class="form-control" id="t-pw" minlength="6" required></div>` : `
+          <div class="col-md-6"><label class="form-label">Account Status</label>
+            <select class="form-select" id="t-active">
+              <option value="true" ${item?.profiles?.is_active !== false ? "selected" : ""}>Active</option>
+              <option value="false" ${item?.profiles?.is_active === false ? "selected" : ""}>Deactivated</option>
+            </select>
+          </div>`}
+          <div class="col-md-4"><label class="form-label">Phone</label><input type="text" class="form-control" id="t-phone" value="${esc(item?.profiles?.phone || "")}" placeholder="e.g. +8801..."></div>
+          <div class="col-md-4"><label class="form-label">Gender</label>
+            <select class="form-select" id="t-gender">
+              <option value="M" ${(item?.profiles?.gender || "M") === "M" ? "selected" : ""}>Male</option>
+              <option value="F" ${item?.profiles?.gender === "F" ? "selected" : ""}>Female</option>
+              <option value="O" ${item?.profiles?.gender === "O" ? "selected" : ""}>Other</option>
+            </select>
+          </div>
           <div class="col-md-4"><label class="form-label">Employee ID</label><input class="form-control" id="t-emp" value="${esc(item?.employee_id || "")}" required></div>
-          <div class="col-md-4"><label class="form-label">Department</label>
+          <div class="col-md-6"><label class="form-label">Department</label>
             <select class="form-select" id="t-dept"><option value="">— Optional —</option>${depts.map((d) => `<option value="${d.id}" ${item?.department_id === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-md-4"><label class="form-label">Qualification</label><input class="form-control" id="t-qual" value="${esc(item?.qualification || "")}"></div>
+          <div class="col-md-6"><label class="form-label">Qualification</label><input class="form-control" id="t-qual" value="${esc(item?.qualification || "")}"></div>
+          <div class="col-12"><label class="form-label">Address</label><input class="form-control" id="t-address" value="${esc(item?.profiles?.address || "")}" placeholder="Optional address"></div>
           <div class="col-12 d-flex justify-content-between align-items-center">
             ${item ? `<button type="button" class="btn btn-outline-warning" id="t-reset-pw-btn"><i data-lucide="lock" class="me-1"></i> Reset Password</button>` : `<span></span>`}
             <button class="btn btn-primary" type="submit">Save Teacher</button>
@@ -677,13 +692,18 @@
             first_name: document.getElementById("t-fn").value.trim(),
             last_name: document.getElementById("t-ln").value.trim(),
             username: document.getElementById("t-user").value.trim(),
+            email: document.getElementById("t-email").value.trim(),
+            phone: document.getElementById("t-phone").value.trim(),
+            gender: document.getElementById("t-gender").value,
+            address: document.getElementById("t-address").value.trim(),
             employee_id: document.getElementById("t-emp").value.trim(),
             department_id: document.getElementById("t-dept").value ? Number(document.getElementById("t-dept").value) : null,
             qualification: document.getElementById("t-qual").value.trim(),
           };
           if (!item) {
-            payload.email = document.getElementById("t-email").value.trim();
             payload.password = document.getElementById("t-pw").value;
+          } else {
+            payload.is_active = document.getElementById("t-active").value === "true";
           }
           await ERP.api("/api/admin/teachers", { method: item ? "PUT" : "POST", body: JSON.stringify(payload) });
           modal.hide();
@@ -705,6 +725,7 @@
         { label: "Emp ID", sortValue: (r) => r.employee_id || "", render: (r) => `<span class="badge bg-secondary">${esc(r.employee_id)}</span>` },
         { label: "Name", sortValue: (r) => `${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
         { label: "Email", sortValue: (r) => r.profiles?.email || "", render: (r) => esc(r.profiles?.email) },
+        { label: "Phone", sortValue: (r) => r.profiles?.phone || "", render: (r) => esc(r.profiles?.phone || "—") },
         { label: "Department", sortValue: (r) => r.departments?.name || "", render: (r) => esc(r.departments?.name || "—") },
         { label: "Qualification", sortValue: (r) => r.qualification || "", render: (r) => esc(r.qualification || "—") },
         {
@@ -751,19 +772,34 @@
           <div class="col-md-4"><label class="form-label">First Name</label><input class="form-control" id="st-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
           <div class="col-md-4"><label class="form-label">Last Name</label><input class="form-control" id="st-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
           <div class="col-md-4"><label class="form-label">Username</label><input class="form-control" id="st-user" value="${esc(item?.profiles?.username || "")}" placeholder="e.g. john-doe"></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="st-email" value="${esc(item?.profiles?.email || "")}" required></div>
           ${!item ? `
-          <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="st-email" required></div>
-          <div class="col-md-6"><label class="form-label">Password <small class="text-muted">(default: student@prstu)</small></label><input type="password" class="form-control" id="st-pw" minlength="6" value="student@prstu" placeholder="student@prstu"></div>` : ""}
-          <div class="col-md-3"><label class="form-label">Roll Number</label><input class="form-control" id="st-roll" value="${esc(item?.roll_number || "")}" required></div>
-          <div class="col-md-3"><label class="form-label">Course</label>
+          <div class="col-md-6"><label class="form-label">Password <small class="text-muted">(default: student@prstu)</small></label><input type="password" class="form-control" id="st-pw" minlength="6" value="student@prstu" placeholder="student@prstu"></div>` : `
+          <div class="col-md-6"><label class="form-label">Account Status</label>
+            <select class="form-select" id="st-active">
+              <option value="true" ${item?.profiles?.is_active !== false ? "selected" : ""}>Active</option>
+              <option value="false" ${item?.profiles?.is_active === false ? "selected" : ""}>Deactivated</option>
+            </select>
+          </div>`}
+          <div class="col-md-4"><label class="form-label">Phone</label><input type="text" class="form-control" id="st-phone" value="${esc(item?.profiles?.phone || "")}" placeholder="e.g. +8801..."></div>
+          <div class="col-md-4"><label class="form-label">Gender</label>
+            <select class="form-select" id="st-gender">
+              <option value="M" ${(item?.profiles?.gender || "M") === "M" ? "selected" : ""}>Male</option>
+              <option value="F" ${item?.profiles?.gender === "F" ? "selected" : ""}>Female</option>
+              <option value="O" ${item?.profiles?.gender === "O" ? "selected" : ""}>Other</option>
+            </select>
+          </div>
+          <div class="col-md-4"><label class="form-label">Roll Number</label><input class="form-control" id="st-roll" value="${esc(item?.roll_number || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">Course</label>
             <select class="form-select" id="st-course"><option value="">— Select —</option>${courses.map((c) => `<option value="${c.id}" ${item?.course_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-md-3"><label class="form-label">Session</label>
+          <div class="col-md-4"><label class="form-label">Session</label>
             <select class="form-select" id="st-sess"><option value="">— Select —</option>${sessions.map((s) => `<option value="${s.id}" ${item?.session_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-md-3"><label class="form-label">Semester</label>
+          <div class="col-md-4"><label class="form-label">Semester</label>
             <select class="form-select" id="st-sem"><option value="">— Select —</option>${semesters.map((s) => `<option value="${s.id}" ${item?.semester_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
           </div>
+          <div class="col-12"><label class="form-label">Address</label><input class="form-control" id="st-address" value="${esc(item?.profiles?.address || "")}" placeholder="Optional address"></div>
           <div class="col-12 d-flex justify-content-between align-items-center">
             ${item ? `<button type="button" class="btn btn-outline-warning" id="st-reset-pw-btn"><i data-lucide="lock" class="me-1"></i> Reset Password</button>` : `<span></span>`}
             <button class="btn btn-primary" type="submit">Save Student</button>
@@ -781,14 +817,19 @@
             first_name: document.getElementById("st-fn").value.trim(),
             last_name: document.getElementById("st-ln").value.trim(),
             username: document.getElementById("st-user").value.trim(),
+            email: document.getElementById("st-email").value.trim(),
+            phone: document.getElementById("st-phone").value.trim(),
+            gender: document.getElementById("st-gender").value,
+            address: document.getElementById("st-address").value.trim(),
             roll_number: document.getElementById("st-roll").value.trim(),
             course_id: document.getElementById("st-course").value ? Number(document.getElementById("st-course").value) : null,
             session_id: document.getElementById("st-sess").value ? Number(document.getElementById("st-sess").value) : null,
             semester_id: document.getElementById("st-sem").value ? Number(document.getElementById("st-sem").value) : null,
           };
           if (!item) {
-            payload.email = document.getElementById("st-email").value.trim();
             payload.password = document.getElementById("st-pw").value;
+          } else {
+            payload.is_active = document.getElementById("st-active").value === "true";
           }
           await ERP.api("/api/admin/students", { method: item ? "PUT" : "POST", body: JSON.stringify(payload) });
           modal.hide();
@@ -819,6 +860,7 @@
         { label: "Roll No", sortValue: (r) => r.roll_number || "", render: (r) => `<span class="badge bg-dark">${esc(r.roll_number)}</span>` },
         { label: "Name", sortValue: (r) => `${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
         { label: "Email", sortValue: (r) => r.profiles?.email || "", render: (r) => esc(r.profiles?.email) },
+        { label: "Phone", sortValue: (r) => r.profiles?.phone || "", render: (r) => esc(r.profiles?.phone || "—") },
         { label: "Course", sortValue: (r) => r.courses?.name || "", render: (r) => esc(r.courses?.name || "—") },
         { label: "Session", sortValue: (r) => r.academic_sessions?.name || "", render: (r) => esc(r.academic_sessions?.name || "—") },
         { label: "Semester", sortValue: (r) => r.semesters?.name || "", render: (r) => esc(r.semesters?.name || "—") },

@@ -245,6 +245,31 @@ def _create_user_account(email: str, password: str, first_name: str, last_name: 
     return user_id
 
 
+def _update_user_profile(profile_id: str, data: dict) -> None:
+    """Update profile fields for a teacher or student and sync email to Auth if changed."""
+    profile_updates = {
+        k: data[k]
+        for k in ["first_name", "last_name", "username", "gender", "phone", "address", "is_active"]
+        if k in data
+    }
+    if "username" in profile_updates:
+        u = str(profile_updates["username"] or "").strip().lower()
+        profile_updates["username"] = u if u else None
+    if "email" in data and str(data["email"] or "").strip():
+        new_email = str(data["email"]).strip().lower()
+        if "@" not in new_email or "." not in new_email.split("@")[-1]:
+            raise ValueError("Invalid email address")
+        admin_client = get_admin_client()
+        if admin_client:
+            admin_client.auth.admin.update_user_by_id(
+                str(profile_id),
+                {"email": new_email, "email_confirm": True},
+            )
+        profile_updates["email"] = new_email
+    if profile_updates:
+        g.db.table("profiles").update(profile_updates).eq("id", profile_id).execute()
+
+
 @admin_bp.route("/teachers", methods=["GET", "POST", "PUT", "DELETE"])
 @require_role("admin")
 def manage_teachers():
@@ -288,16 +313,7 @@ def manage_teachers():
             err = require_fields(data, ["id", "profile_id"])
             if err:
                 return err
-            profile_updates = {
-                k: data[k]
-                for k in ["first_name", "last_name", "username", "gender", "phone", "address", "is_active"]
-                if k in data
-            }
-            if "username" in profile_updates:
-                u = str(profile_updates["username"] or "").strip().lower()
-                profile_updates["username"] = u if u else None
-            if profile_updates:
-                g.db.table("profiles").update(profile_updates).eq("id", data["profile_id"]).execute()
+            _update_user_profile(data["profile_id"], data)
             teacher_updates = {
                 k: data[k]
                 for k in ["department_id", "employee_id", "qualification"]
@@ -366,16 +382,7 @@ def manage_students():
             err = require_fields(data, ["id", "profile_id"])
             if err:
                 return err
-            profile_updates = {
-                k: data[k]
-                for k in ["first_name", "last_name", "username", "gender", "phone", "address", "is_active"]
-                if k in data
-            }
-            if "username" in profile_updates:
-                u = str(profile_updates["username"] or "").strip().lower()
-                profile_updates["username"] = u if u else None
-            if profile_updates:
-                g.db.table("profiles").update(profile_updates).eq("id", data["profile_id"]).execute()
+            _update_user_profile(data["profile_id"], data)
             student_updates = {
                 k: data[k]
                 for k in ["roll_number", "course_id", "session_id", "semester_id"]
