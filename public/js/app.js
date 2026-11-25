@@ -223,8 +223,29 @@ window.ERP = (() => {
     }
   }
 
+  function tabStorageKey() {
+    return `erp_tab_${window.location.pathname || "/"}`;
+  }
+
+  function getInitialTab(navItems) {
+    const hashTab = window.location.hash.replace(/^#/, "");
+    if (hashTab && navItems.some((n) => n.id === hashTab)) return hashTab;
+    try {
+      const saved = sessionStorage.getItem(tabStorageKey());
+      if (saved && navItems.some((n) => n.id === saved)) return saved;
+    } catch {
+      // Ignore storage errors
+    }
+    return navItems[0]?.id || "overview";
+  }
+
   async function logout() {
     invalidateCache();
+    try {
+      sessionStorage.removeItem(tabStorageKey());
+    } catch {
+      // Ignore storage errors
+    }
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
@@ -235,14 +256,25 @@ window.ERP = (() => {
     }
   }
 
-  function renderShell({ title, roleLabel, navItems, onTabChange, user }) {
+  function renderShell({ title, roleLabel, navItems, onTabChange, user, initialTab }) {
     const sidebarNav = document.getElementById("sidebar-nav");
     const userBadge = document.getElementById("topbar-user");
     const pageTitle = document.getElementById("topbar-title");
     const roleBadge = document.getElementById("sidebar-role-badge");
+    const activeTab = initialTab || getInitialTab(navItems);
+    const activeItem = navItems.find((n) => n.id === activeTab);
+
+    try {
+      sessionStorage.setItem(tabStorageKey(), activeTab);
+    } catch {
+      // Ignore storage errors
+    }
+    if (window.location.hash !== `#${activeTab}`) {
+      history.replaceState(null, "", `#${activeTab}`);
+    }
 
     if (roleBadge) roleBadge.textContent = roleLabel;
-    if (pageTitle) pageTitle.textContent = title;
+    if (pageTitle) pageTitle.textContent = activeItem?.label || title;
     if (userBadge && user?.profile) {
       const fullName =
         `${user.profile.first_name || ""} ${user.profile.last_name || ""}`.trim() ||
@@ -251,11 +283,25 @@ window.ERP = (() => {
       userBadge.textContent = fullName;
     }
 
+    const setActiveVisual = (tabId) => {
+      if (!sidebarNav) return;
+      sidebarNav.querySelectorAll(".nav-link").forEach((l) => {
+        l.classList.toggle("active", l.getAttribute("data-tab") === tabId);
+      });
+      const item = navItems.find((n) => n.id === tabId);
+      if (pageTitle && item) pageTitle.textContent = item.label;
+      try {
+        sessionStorage.setItem(tabStorageKey(), tabId);
+      } catch {
+        // Ignore storage errors
+      }
+    };
+
     if (sidebarNav) {
       sidebarNav.innerHTML = navItems
         .map(
-          (item, idx) => `
-          <a href="#" class="nav-link ${idx === 0 ? "active" : ""}" data-tab="${escapeHtml(item.id)}">
+          (item) => `
+          <a href="#${escapeHtml(item.id)}" class="nav-link ${item.id === activeTab ? "active" : ""}" data-tab="${escapeHtml(item.id)}">
             <i class="bi ${escapeHtml(item.icon)}"></i>
             <span>${escapeHtml(item.label)}</span>
           </a>`
@@ -265,14 +311,21 @@ window.ERP = (() => {
       sidebarNav.querySelectorAll(".nav-link").forEach((link) => {
         link.addEventListener("click", (e) => {
           e.preventDefault();
-          sidebarNav.querySelectorAll(".nav-link").forEach((l) => l.classList.remove("active"));
-          link.classList.add("active");
           const tabId = link.getAttribute("data-tab");
-          const item = navItems.find((n) => n.id === tabId);
-          if (pageTitle && item) pageTitle.textContent = item.label;
+          setActiveVisual(tabId);
+          if (window.location.hash !== `#${tabId}`) {
+            history.pushState(null, "", `#${tabId}`);
+          }
           closeMobileSidebar();
           onTabChange(tabId);
         });
+      });
+
+      window.addEventListener("hashchange", () => {
+        const nextTab = window.location.hash.replace(/^#/, "");
+        if (!nextTab || !navItems.some((n) => n.id === nextTab)) return;
+        setActiveVisual(nextTab);
+        onTabChange(nextTab);
       });
     }
 
@@ -644,10 +697,6 @@ window.ERP = (() => {
     variant = "danger",
   } = {}) {
     return new Promise((resolve) => {
-      if (typeof bootstrap === "undefined" || !bootstrap.Modal) {
-        resolve(window.confirm([message, detail].filter(Boolean).join("\n")));
-        return;
-      }
       let modalEl = document.getElementById("erpConfirmModal");
       if (!modalEl) {
         modalEl = document.createElement("div");
@@ -660,7 +709,7 @@ window.ERP = (() => {
             <div class="modal-content border-0 shadow">
               <div class="modal-header border-0 pb-1">
                 <h5 class="modal-title fw-bold d-flex align-items-center gap-2" id="erp-confirm-title"></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="erp-confirm-close"></button>
               </div>
               <div class="modal-body pt-2">
                 <p class="mb-2" id="erp-confirm-msg"></p>
@@ -679,6 +728,7 @@ window.ERP = (() => {
       const titleEl = modalEl.querySelector("#erp-confirm-title");
       const msgEl = modalEl.querySelector("#erp-confirm-msg");
       const detailEl = modalEl.querySelector("#erp-confirm-detail");
+      const closeBtn = modalEl.querySelector("#erp-confirm-close");
       const cancelBtn = modalEl.querySelector("#erp-confirm-cancel");
       const okBtn = modalEl.querySelector("#erp-confirm-ok");
 
@@ -694,27 +744,61 @@ window.ERP = (() => {
       okBtn.className = `btn btn-${variant}`;
       okBtn.textContent = confirmText;
 
-      const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+        const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        let settled = false;
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          okBtn.removeEventListener("click", onOk);
+          modalEl.removeEventListener("hidden.bs.modal", onHidden);
+          modalEl.removeEventListener("shown.bs.modal", onShown);
+          resolve(result);
+        };
+        const onOk = () => {
+          finish(true);
+          bsModal.hide();
+        };
+        const onHidden = () => finish(false);
+        const onShown = () => cancelBtn.focus();
+
+        okBtn.addEventListener("click", onOk);
+        modalEl.addEventListener("hidden.bs.modal", onHidden);
+        modalEl.addEventListener("shown.bs.modal", onShown);
+        bsModal.show();
+        return;
+      }
+
       let settled = false;
-      const finish = (result) => {
+      const backdropEl = document.createElement("div");
+      backdropEl.className = "modal-backdrop fade show";
+      const cleanup = (result) => {
         if (settled) return;
         settled = true;
+        modalEl.classList.remove("show");
+        modalEl.style.display = "none";
+        backdropEl.remove();
         okBtn.removeEventListener("click", onOk);
-        modalEl.removeEventListener("hidden.bs.modal", onHidden);
-        modalEl.removeEventListener("shown.bs.modal", onShown);
+        cancelBtn.removeEventListener("click", onCancel);
+        closeBtn?.removeEventListener("click", onCancel);
+        modalEl.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onEsc);
         resolve(result);
       };
-      const onOk = () => {
-        finish(true);
-        bsModal.hide();
-      };
-      const onHidden = () => finish(false);
-      const onShown = () => cancelBtn.focus();
+      const onOk = () => cleanup(true);
+      const onCancel = () => cleanup(false);
+      const onBackdrop = (e) => { if (e.target === modalEl) cleanup(false); };
+      const onEsc = (e) => { if (e.key === "Escape") cleanup(false); };
 
+      document.body.appendChild(backdropEl);
+      modalEl.style.display = "block";
+      modalEl.classList.add("show");
+      cancelBtn.focus();
       okBtn.addEventListener("click", onOk);
-      modalEl.addEventListener("hidden.bs.modal", onHidden);
-      modalEl.addEventListener("shown.bs.modal", onShown);
-      bsModal.show();
+      cancelBtn.addEventListener("click", onCancel);
+      closeBtn?.addEventListener("click", onCancel);
+      modalEl.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onEsc);
     });
   }
 
@@ -758,6 +842,7 @@ window.ERP = (() => {
     showToast,
     requireAuth,
     logout,
+    getInitialTab,
     renderShell,
     paginate,
     pageSizeOptions,

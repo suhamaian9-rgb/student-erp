@@ -314,15 +314,21 @@
   };
 
   const switchTab = ERP.createTabRunner(main, tabHandlers);
+  const initialTab = ERP.getInitialTab(navItems);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Student Portal",
     navItems,
     user: userData,
+    initialTab,
     onTabChange: (tabId) => switchTab(tabId),
   });
 
-  const [prefetchedStats, prefetchedAtt] = await Promise.all([statsBoot, attBoot]);
-  loadOverview(null, prefetchedStats && prefetchedAtt ? [prefetchedStats, prefetchedAtt] : null);
+  if (initialTab === "overview") {
+    const [prefetchedStats, prefetchedAtt] = await Promise.all([statsBoot, attBoot]);
+    loadOverview(null, prefetchedStats && prefetchedAtt ? [prefetchedStats, prefetchedAtt] : null);
+  } else {
+    switchTab(initialTab);
+  }
 })();

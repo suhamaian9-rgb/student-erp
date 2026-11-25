@@ -480,15 +480,21 @@
   };
 
   const switchTab = ERP.createTabRunner(main, tabHandlers);
+  const initialTab = ERP.getInitialTab(navItems);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Teacher Portal",
     navItems,
     user: userData,
+    initialTab,
     onTabChange: (tabId) => switchTab(tabId),
   });
 
-  const prefetchedStats = await statsBoot;
-  loadOverview(null, prefetchedStats);
+  if (initialTab === "overview") {
+    const prefetchedStats = await statsBoot;
+    loadOverview(null, prefetchedStats);
+  } else {
+    switchTab(initialTab);
+  }
 })();

@@ -1129,15 +1129,36 @@
       ],
       onAction: async (b) => {
         if (!b.dataset.lv) return;
-        const note = prompt(`Optional note for ${b.dataset.st}:`, "") ?? "";
-        try {
-          await ERP.api("/api/admin/leaves", {
-            method: "PATCH",
-            body: JSON.stringify({ id: Number(b.dataset.lv), status: b.dataset.st, review_note: note }),
-          });
-          ERP.showToast(`Leave ${b.dataset.st}!`);
-          loadLeaves();
-        } catch (err) { ERP.showToast(err.message, "danger"); }
+        const item = rows.find((x) => x.id == b.dataset.lv);
+        const status = b.dataset.st;
+        const applicantName = `${item?.applicant?.first_name || ""} ${item?.applicant?.last_name || ""}`.trim();
+        openModal(`${status === "approved" ? "Approve" : "Reject"} Leave Application`, `
+          <form id="leave-review-form" class="row g-3">
+            <div class="col-12 small text-muted">
+              Applicant: <strong>${esc(applicantName || "—")}</strong> (${esc(item?.start_date || "")} to ${esc(item?.end_date || "")})
+            </div>
+            <div class="col-12">
+              <label class="form-label">Review Note (Optional)</label>
+              <textarea id="lv-note" class="form-control" rows="2" placeholder="Add an optional note..."></textarea>
+            </div>
+            <div class="col-12 text-end">
+              <button type="button" class="btn btn-light me-1" data-bs-dismiss="modal">Cancel</button>
+              <button class="btn btn-${status === "approved" ? "success" : "danger"}" type="submit">${status === "approved" ? "Approve Leave" : "Reject Leave"}</button>
+            </div>
+          </form>`);
+        document.getElementById("leave-review-form").onsubmit = async (e) => {
+          e.preventDefault();
+          const note = document.getElementById("lv-note").value.trim();
+          try {
+            await ERP.api("/api/admin/leaves", {
+              method: "PATCH",
+              body: JSON.stringify({ id: Number(b.dataset.lv), status, review_note: note }),
+            });
+            modal.hide();
+            ERP.showToast(`Leave ${status}!`);
+            loadLeaves();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        };
       },
     });
   }
@@ -1161,13 +1182,32 @@
       ],
       onAction: async (b) => {
         if (!b.dataset.fb) return;
-        const reply = prompt("Enter reply:");
-        if (!reply) return;
-        try {
-          await ERP.api("/api/admin/feedback", { method: "PATCH", body: JSON.stringify({ id: Number(b.dataset.fb), reply }) });
-          ERP.showToast("Reply sent!");
-          loadFeedback();
-        } catch (err) { ERP.showToast(err.message, "danger"); }
+        const item = rows.find((x) => x.id == b.dataset.fb);
+        openModal("Reply to Feedback", `
+          <form id="fb-reply-form" class="row g-3">
+            <div class="col-12 small text-muted">
+              Subject: <strong>${esc(item?.subject || "")}</strong>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Reply Message</label>
+              <textarea id="fb-reply-text" class="form-control" rows="3" required placeholder="Write your reply...">${esc(item?.reply || "")}</textarea>
+            </div>
+            <div class="col-12 text-end">
+              <button type="button" class="btn btn-light me-1" data-bs-dismiss="modal">Cancel</button>
+              <button class="btn btn-primary" type="submit">Send Reply</button>
+            </div>
+          </form>`);
+        document.getElementById("fb-reply-form").onsubmit = async (e) => {
+          e.preventDefault();
+          const reply = document.getElementById("fb-reply-text").value.trim();
+          if (!reply) return;
+          try {
+            await ERP.api("/api/admin/feedback", { method: "PATCH", body: JSON.stringify({ id: Number(b.dataset.fb), reply }) });
+            modal.hide();
+            ERP.showToast("Reply sent!");
+            loadFeedback();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        };
       },
     });
   }
@@ -1227,15 +1267,21 @@
   };
 
   const switchTab = ERP.createTabRunner(main, tabHandlers);
+  const initialTab = ERP.getInitialTab(navItems);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Admin / HOD",
     navItems,
     user: userData,
+    initialTab,
     onTabChange: (tabId) => switchTab(tabId),
   });
 
-  const prefetchedStats = await statsBoot;
-  loadOverview(null, prefetchedStats);
+  if (initialTab === "overview") {
+    const prefetchedStats = await statsBoot;
+    loadOverview(null, prefetchedStats);
+  } else {
+    switchTab(initialTab);
+  }
 })();
