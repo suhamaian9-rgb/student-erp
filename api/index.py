@@ -19,7 +19,7 @@ from api.auth_utils import require_auth  # noqa: E402
 from api.routes_admin import admin_bp  # noqa: E402
 from api.routes_student import student_bp  # noqa: E402
 from api.routes_teacher import teacher_bp  # noqa: E402
-from api.supabase_client import get_supabase_anon_key, get_supabase_url  # noqa: E402
+from api.supabase_client import get_admin_client, get_supabase_anon_key, get_supabase_url  # noqa: E402
 
 app = Flask(__name__, static_folder="../public", static_url_path="")
 
@@ -111,6 +111,114 @@ def mark_notification_read(notif_id: int):
         .execute()
     )
     return jsonify(resp.data[0] if resp.data else {}), 200
+
+
+@app.route("/api/bootstrap-demo", methods=["POST"])
+def bootstrap_demo_data():
+    """One-time initializer that creates 3 demo accounts and sample academic data
+    only when the database has zero profiles. Locks itself permanently afterward.
+    """
+    admin_client = get_admin_client()
+    if not admin_client:
+        return jsonify({"error": "SUPABASE_SERVICE_ROLE_KEY is not configured on the server"}), 500
+
+    existing = admin_client.table("profiles").select("id").limit(1).execute().data or []
+    if len(existing) > 0:
+        return jsonify({"error": "Database is already initialized"}), 409
+
+    # 1. Create 3 demo Auth users (trigger creates profiles automatically)
+    demo_users = [
+        ("admin@college-erp.edu", "Admin@1234", "HOD", "Admin", "admin"),
+        ("teacher@college-erp.edu", "Teacher@1234", "Alan", "Turing", "teacher"),
+        ("student@college-erp.edu", "Student@1234", "Ada", "Lovelace", "student"),
+    ]
+    user_ids = {}
+    for email, pw, fn, ln, role in demo_users:
+        created = admin_client.auth.admin.create_user({
+            "email": email,
+            "password": pw,
+            "email_confirm": True,
+            "user_metadata": {"first_name": fn, "last_name": ln, "role": role},
+        })
+        uid = created.user.id
+        admin_client.table("profiles").update({
+            "first_name": fn,
+            "last_name": ln,
+            "role": role,
+        }).eq("id", uid).execute()
+        user_ids[role] = uid
+
+    # 2. Seed Department, Course, Session, Semester
+    dept = admin_client.table("departments").insert({
+        "name": "Computer Science & Engineering",
+        "code": "CSE",
+        "description": "Department of Computer Science and Software Engineering",
+    }).execute().data[0]
+
+    course = admin_client.table("courses").insert({
+        "department_id": dept["id"],
+        "name": "B.Tech Computer Science",
+        "code": "BTCS",
+        "duration_years": 4,
+    }).execute().data[0]
+
+    session = admin_client.table("academic_sessions").insert({
+        "name": "2026-2027",
+        "start_date": "2026-08-01",
+        "end_date": "2027-05-31",
+        "is_current": True,
+    }).execute().data[0]
+
+    semester = admin_client.table("semesters").insert({
+        "session_id": session["id"],
+        "name": "Fall 2026",
+        "semester_number": 1,
+        "start_date": "2026-08-01",
+        "end_date": "2026-12-20",
+        "is_current": True,
+    }).execute().data[0]
+
+    # 3. Seed Teacher, Student, Subject, Enrollment, Examination
+    teacher = admin_client.table("teachers").insert({
+        "profile_id": user_ids["teacher"],
+        "department_id": dept["id"],
+        "employee_id": "EMP-101",
+        "qualification": "Ph.D. Computer Science",
+    }).execute().data[0]
+
+    student = admin_client.table("students").insert({
+        "profile_id": user_ids["student"],
+        "course_id": course["id"],
+        "session_id": session["id"],
+        "semester_id": semester["id"],
+        "roll_number": "CSE-2026-001",
+    }).execute().data[0]
+
+    subject = admin_client.table("subjects").insert({
+        "course_id": course["id"],
+        "semester_id": semester["id"],
+        "teacher_id": teacher["id"],
+        "name": "Data Structures & Algorithms",
+        "code": "CS201",
+        "credits": 4,
+    }).execute().data[0]
+
+    admin_client.table("enrollments").insert({
+        "student_id": student["id"],
+        "subject_id": subject["id"],
+        "semester_id": semester["id"],
+    }).execute()
+
+    admin_client.table("examinations").insert({
+        "name": "Midterm Fall 2026",
+        "exam_type": "midterm",
+        "session_id": session["id"],
+        "semester_id": semester["id"],
+        "exam_date": "2026-10-15",
+        "max_marks": 100,
+    }).execute()
+
+    return jsonify({"initialized": True, "accounts_created": 3}), 201
 
 
 if __name__ == "__main__":
