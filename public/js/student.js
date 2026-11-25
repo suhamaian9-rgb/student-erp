@@ -1,10 +1,12 @@
 /**
  * Student Dashboard Controller.
- * Covers: Overview + Attendance Chart, My Subjects, Attendance History & %,
- * Examination Results & Grades, Leave Applications, Feedback, and Profile.
+ * Covers: Overview + Lazy Attendance Charts, My Subjects, Attendance History & %,
+ * Examination Results & Grades, Leave Applications, Feedback, and Lazy Profile.
  */
 
 (async () => {
+  const statsBoot = ERP.cachedApi("/api/student/stats").catch(() => null);
+  const attBoot = ERP.cachedApi("/api/student/attendance").catch(() => null);
   const userData = await ERP.requireAuth("student");
   if (!userData) return;
 
@@ -22,8 +24,12 @@
   ];
 
   // 1. OVERVIEW
-  async function loadOverview() {
-    const [stats, att] = await Promise.all([ERP.api("/api/student/stats"), ERP.api("/api/student/attendance")]);
+  async function loadOverview(signal, prefetched = null) {
+    const [stats, att] = prefetched || (await Promise.all([
+      ERP.cachedApi("/api/student/stats", { signal }),
+      ERP.cachedApi("/api/student/attendance", { signal }),
+    ]));
+    if (signal?.aborted) return;
     const c = stats.counts;
     const cards = [
       { label: "Attendance %", val: `${c.attendance_percentage}%`, icon: "bi-pie-chart-fill", bg: "bg-primary-subtle text-primary" },
@@ -60,7 +66,13 @@
         </div>
       </div>`;
 
-    new Chart(document.getElementById("stud-att-donut"), {
+    await ERP.loadChartJs();
+    if (signal?.aborted) return;
+    const donutEl = document.getElementById("stud-att-donut");
+    const barEl = document.getElementById("stud-sub-bar");
+    if (!donutEl || !barEl) return;
+
+    new Chart(donutEl, {
       type: "doughnut",
       data: {
         labels: ["Present / Late", "Absent"],
@@ -69,7 +81,7 @@
       options: { responsive: true },
     });
 
-    new Chart(document.getElementById("stud-sub-bar"), {
+    new Chart(barEl, {
       type: "bar",
       data: {
         labels: att.by_subject.map((x) => x.subject),
@@ -80,8 +92,8 @@
   }
 
   // 2. MY SUBJECTS
-  async function loadSubjects() {
-    const rows = await ERP.api("/api/student/subjects");
+  async function loadSubjects(signal) {
+    const rows = await ERP.cachedApi("/api/student/subjects", { signal });
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
         <h5 class="fw-bold mb-3">Enrolled Course Subjects</h5>
@@ -104,8 +116,8 @@
   }
 
   // 3. ATTENDANCE HISTORY
-  async function loadAttendance() {
-    const data = await ERP.api("/api/student/attendance");
+  async function loadAttendance(signal) {
+    const data = await ERP.cachedApi("/api/student/attendance", { signal });
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4 mb-4">
         <h5 class="fw-bold mb-3">Subject-Wise Attendance Percentage</h5>
@@ -127,26 +139,41 @@
       </div>
 
       <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <h5 class="fw-bold mb-0">Attendance History</h5>
           <button id="exp-att" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</button>
         </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
+          <table class="table table-hover align-middle mb-2">
             <thead><tr><th>Date</th><th>Subject</th><th>Topic</th><th>Status</th><th>Remarks</th></tr></thead>
-            <tbody>
-              ${data.records.map((r) => `
-                <tr>
-                  <td>${esc(r.attendance_sessions?.attendance_date)}</td>
-                  <td>${esc(r.attendance_sessions?.subjects?.name)}</td>
-                  <td>${esc(r.attendance_sessions?.topic || "—")}</td>
-                  <td>${ERP.statusBadge(r.status)}</td>
-                  <td>${esc(r.remarks || "—")}</td>
-                </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No attendance history yet.</td></tr>`}
-            </tbody>
+            <tbody id="s-att-body"></tbody>
           </table>
         </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small id="s-att-info" class="text-muted"></small>
+          <div id="s-att-pager" class="btn-group btn-group-sm"></div>
+        </div>
       </div>`;
+
+    let page = 1;
+    const drawAtt = () => {
+      const paged = ERP.paginate(data.records, page, 12);
+      document.getElementById("s-att-body").innerHTML = paged.rows.map((r) => `
+        <tr>
+          <td>${esc(r.attendance_sessions?.attendance_date)}</td>
+          <td>${esc(r.attendance_sessions?.subjects?.name)}</td>
+          <td>${esc(r.attendance_sessions?.topic || "—")}</td>
+          <td>${ERP.statusBadge(r.status)}</td>
+          <td>${esc(r.remarks || "—")}</td>
+        </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No attendance history yet.</td></tr>`;
+      document.getElementById("s-att-info").textContent = `Showing ${paged.rows.length} of ${paged.total} records (Page ${paged.page}/${paged.totalPages})`;
+      document.getElementById("s-att-pager").innerHTML = `
+        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="sa-prev">Prev</button>
+        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="sa-next">Next</button>`;
+      document.getElementById("sa-prev").onclick = () => { page--; drawAtt(); };
+      document.getElementById("sa-next").onclick = () => { page++; drawAtt(); };
+    };
+    drawAtt();
 
     document.getElementById("exp-att").onclick = () => {
       ERP.exportCsv(
@@ -158,30 +185,45 @@
   }
 
   // 4. RESULTS
-  async function loadResults() {
-    const rows = await ERP.api("/api/student/results");
+  async function loadResults(signal) {
+    const rows = await ERP.cachedApi("/api/student/results", { signal });
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <h5 class="fw-bold mb-0">Examination Results</h5>
           <button id="exp-res" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</button>
         </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
+          <table class="table table-hover align-middle mb-2">
             <thead><tr><th>Examination</th><th>Type</th><th>Subject</th><th>Marks</th><th>Grade</th></tr></thead>
-            <tbody>
-              ${rows.map((r) => `
-                <tr>
-                  <td><strong>${esc(r.examinations?.name)}</strong></td>
-                  <td><span class="badge bg-secondary text-uppercase">${esc(r.examinations?.exam_type)}</span></td>
-                  <td>${esc(r.subjects?.name)} (${esc(r.subjects?.code)})</td>
-                  <td>${r.marks_obtained} / ${r.max_marks}</td>
-                  <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-                </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No results published yet.</td></tr>`}
-            </tbody>
+            <tbody id="s-res-body"></tbody>
           </table>
         </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small id="s-res-info" class="text-muted"></small>
+          <div id="s-res-pager" class="btn-group btn-group-sm"></div>
+        </div>
       </div>`;
+
+    let page = 1;
+    const drawRes = () => {
+      const paged = ERP.paginate(rows, page, 12);
+      document.getElementById("s-res-body").innerHTML = paged.rows.map((r) => `
+        <tr>
+          <td><strong>${esc(r.examinations?.name)}</strong></td>
+          <td><span class="badge bg-secondary text-uppercase">${esc(r.examinations?.exam_type)}</span></td>
+          <td>${esc(r.subjects?.name)} (${esc(r.subjects?.code)})</td>
+          <td>${r.marks_obtained} / ${r.max_marks}</td>
+          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
+        </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No results published yet.</td></tr>`;
+      document.getElementById("s-res-info").textContent = `Showing ${paged.rows.length} of ${paged.total} results (Page ${paged.page}/${paged.totalPages})`;
+      document.getElementById("s-res-pager").innerHTML = `
+        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="sr-prev">Prev</button>
+        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="sr-next">Next</button>`;
+      document.getElementById("sr-prev").onclick = () => { page--; drawRes(); };
+      document.getElementById("sr-next").onclick = () => { page++; drawRes(); };
+    };
+    drawRes();
 
     document.getElementById("exp-res").onclick = () => {
       ERP.exportCsv(
@@ -193,8 +235,8 @@
   }
 
   // 5. LEAVES
-  async function loadLeaves() {
-    const rows = await ERP.api("/api/student/leaves");
+  async function loadLeaves(signal) {
+    const rows = await ERP.cachedApi("/api/student/leaves", { signal });
     main.innerHTML = `
       <div class="row g-4">
         <div class="col-lg-5">
@@ -240,8 +282,8 @@
   }
 
   // 6. FEEDBACK
-  async function loadFeedback() {
-    const rows = await ERP.api("/api/student/feedback");
+  async function loadFeedback(signal) {
+    const rows = await ERP.cachedApi("/api/student/feedback", { signal });
     main.innerHTML = `
       <div class="row g-4">
         <div class="col-lg-5">
@@ -288,16 +330,22 @@
     results: loadResults,
     leaves: loadLeaves,
     feedback: loadFeedback,
-    profile: () => window.renderProfileView(main, userData),
+    profile: async () => {
+      await ERP.loadProfileWidget();
+      window.renderProfileView(main, userData);
+    },
   };
+
+  const switchTab = ERP.createTabRunner(main, tabHandlers);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Student Portal",
     navItems,
     user: userData,
-    onTabChange: (tabId) => tabHandlers[tabId]?.(),
+    onTabChange: (tabId) => switchTab(tabId),
   });
 
-  loadOverview();
+  const [prefetchedStats, prefetchedAtt] = await Promise.all([statsBoot, attBoot]);
+  loadOverview(null, prefetchedStats && prefetchedAtt ? [prefetchedStats, prefetchedAtt] : null);
 })();

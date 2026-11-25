@@ -1,9 +1,23 @@
-"""Shared validation, sanitization, and calculation helpers for the University ERP API."""
+"""Shared validation, sanitization, concurrency, and calculation helpers."""
 
+from concurrent.futures import ThreadPoolExecutor
 import re
+from typing import Any, Callable
 from flask import jsonify
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,40}$")
+
+
+def run_parallel(tasks: dict[str, Callable[[], Any]]) -> dict[str, Any]:
+    """Execute independent I/O callables concurrently and return results keyed by name."""
+    if not tasks:
+        return {}
+    if len(tasks) == 1:
+        key, fn = next(iter(tasks.items()))
+        return {key: fn()}
+    with ThreadPoolExecutor(max_workers=min(8, len(tasks))) as pool:
+        futures = {key: pool.submit(fn) for key, fn in tasks.items()}
+        return {key: fut.result() for key, fut in futures.items()}
 
 
 def compute_grade(marks_obtained: float, max_marks: float) -> str:

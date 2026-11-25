@@ -1,18 +1,34 @@
 /**
  * Shared frontend utilities for the University ERP Portal.
- * All authentication and API requests use same-origin HttpOnly session cookies.
+ * Provides HttpOnly cookie API client, GET caching with mutation invalidation,
+ * lazy script/Chart.js loading, skeletons, and shared portal shell.
  */
 
 window.ERP = (() => {
   let currentUserData = null;
+  const responseCache = new Map();
+  const inflightGets = new Map();
+  const loadedScripts = new Map();
+
+  function invalidateCache(prefix = "") {
+    if (!prefix) {
+      responseCache.clear();
+      return;
+    }
+    for (const key of responseCache.keys()) {
+      if (key.startsWith(prefix)) responseCache.delete(key);
+    }
+  }
 
   async function api(path, options = {}) {
+    const method = (options.method || "GET").toUpperCase();
     const headers = {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     };
     const res = await fetch(path, {
       ...options,
+      method,
       headers,
       credentials: "same-origin",
     });
@@ -32,7 +48,124 @@ window.ERP = (() => {
     if (!res.ok) {
       throw new Error(payload.error || `Request failed (${res.status})`);
     }
+    if (method !== "GET") {
+      invalidateCache();
+    }
     return payload;
+  }
+
+  function withAbortSignal(promise, signal) {
+    if (!signal) return promise;
+    if (signal.aborted) {
+      return Promise.reject(new DOMException("Aborted", "AbortError"));
+    }
+    return new Promise((resolve, reject) => {
+      const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+      signal.addEventListener("abort", onAbort, { once: true });
+      promise.then(
+        (val) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(val);
+        },
+        (err) => {
+          signal.removeEventListener("abort", onAbort);
+          reject(err);
+        }
+      );
+    });
+  }
+
+  function cachedApi(path, { ttlMs = 30000, signal = null, force = false } = {}) {
+    if (!force) {
+      const hit = responseCache.get(path);
+      if (hit && Date.now() - hit.ts < ttlMs) {
+        return withAbortSignal(Promise.resolve(hit.data), signal);
+      }
+    }
+    let reqPromise = inflightGets.get(path);
+    if (!reqPromise) {
+      reqPromise = api(path)
+        .then((data) => {
+          responseCache.set(path, { data, ts: Date.now() });
+          return data;
+        })
+        .finally(() => {
+          inflightGets.delete(path);
+        });
+      inflightGets.set(path, reqPromise);
+    }
+    return withAbortSignal(reqPromise, signal);
+  }
+
+  function loadScript(src) {
+    if (loadedScripts.has(src)) return loadedScripts.get(src);
+    const promise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        loadedScripts.delete(src);
+        reject(new Error(`Failed to load ${src}`));
+      };
+      document.head.appendChild(script);
+    });
+    loadedScripts.set(src, promise);
+    return promise;
+  }
+
+  function loadChartJs() {
+    if (window.Chart) return Promise.resolve();
+    return loadScript("https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js");
+  }
+
+  function loadProfileWidget() {
+    if (window.renderProfileView) return Promise.resolve();
+    return loadScript("/js/profile-widget.js");
+  }
+
+  function renderSkeleton(container, variant = "table") {
+    if (!container) return;
+    if (variant === "cards") {
+      container.innerHTML = `
+        <div class="row g-3 mb-4">
+          ${Array.from({ length: 4 }, () => `<div class="col-6 col-md-3"><div class="skeleton-box skeleton-card"></div></div>`).join("")}
+        </div>
+        <div class="card panel-card p-4">
+          <div class="skeleton-box skeleton-line sm mb-3"></div>
+          <div class="skeleton-box" style="height: 220px;"></div>
+        </div>`;
+      return;
+    }
+    container.innerHTML = `
+      <div class="card panel-card p-3 p-md-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="skeleton-box skeleton-line" style="width: 180px; margin: 0;"></div>
+          <div class="skeleton-box skeleton-line" style="width: 120px; margin: 0;"></div>
+        </div>
+        ${Array.from({ length: 5 }, () => `<div class="skeleton-box skeleton-line"></div>`).join("")}
+      </div>`;
+  }
+
+  function createTabRunner(container, tabHandlers) {
+    let activeController = null;
+    let activeId = 0;
+
+    return async function switchTab(tabId, { skeleton = "table" } = {}) {
+      if (activeController) activeController.abort();
+      activeController = new AbortController();
+      const callId = ++activeId;
+      const handler = tabHandlers[tabId];
+      if (!handler) return;
+
+      renderSkeleton(container, tabId === "overview" ? "cards" : skeleton);
+      try {
+        await handler(activeController.signal);
+      } catch (err) {
+        if (err?.name === "AbortError" || callId !== activeId) return;
+        container.innerHTML = `<div class="alert alert-danger">${escapeHtml(err.message || "Failed to load section.")}</div>`;
+      }
+    };
   }
 
   function escapeHtml(str) {
@@ -91,6 +224,7 @@ window.ERP = (() => {
   }
 
   async function logout() {
+    invalidateCache();
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
@@ -157,7 +291,14 @@ window.ERP = (() => {
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) logoutBtn.onclick = logout;
 
-    loadNotifications();
+    const notifBtn = document.querySelector('[aria-label="Notifications"]');
+    if (notifBtn) {
+      notifBtn.addEventListener("click", () => loadNotifications(true));
+    }
+
+    // Defer initial notifications fetch so overview data & charts load first
+    const schedule = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
+    schedule(() => loadNotifications(false));
   }
 
   function closeMobileSidebar() {
@@ -165,12 +306,12 @@ window.ERP = (() => {
     document.getElementById("erp-backdrop")?.classList.remove("show");
   }
 
-  async function loadNotifications() {
+  async function loadNotifications(force = false) {
     const listEl = document.getElementById("notif-list");
     const countEl = document.getElementById("notif-count");
     if (!listEl || !countEl) return;
     try {
-      const items = await api("/api/notifications");
+      const items = await cachedApi("/api/notifications", { ttlMs: 20000, force });
       const unread = items.filter((n) => !n.is_read).length;
       countEl.textContent = unread > 0 ? unread : "";
       countEl.style.display = unread > 0 ? "inline-block" : "none";
@@ -195,7 +336,7 @@ window.ERP = (() => {
         el.addEventListener("click", async () => {
           const id = el.getAttribute("data-notif-id");
           await api(`/api/notifications/${id}/read`, { method: "PATCH" });
-          loadNotifications();
+          loadNotifications(true);
         });
       });
     } catch {
@@ -245,6 +386,13 @@ window.ERP = (() => {
 
   return {
     api,
+    cachedApi,
+    invalidateCache,
+    loadScript,
+    loadChartJs,
+    loadProfileWidget,
+    renderSkeleton,
+    createTabRunner,
     escapeHtml,
     showToast,
     requireAuth,

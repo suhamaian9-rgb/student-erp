@@ -2,7 +2,7 @@
 
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import compute_grade, require_fields, safe_error
+from api.helpers import compute_grade, require_fields, run_parallel, safe_error
 
 teacher_bp = Blueprint("teacher", __name__, url_prefix="/api/teacher")
 
@@ -27,19 +27,24 @@ def get_stats():
             return jsonify({"error": "Teacher record not found"}), 404
         tid = teacher["id"]
 
-        subjects = g.db.table("subjects").select("id, name, code, course_id").eq("teacher_id", tid).execute().data or []
+        db = g.db
+        profile_id = g.profile["id"]
+        subjects = db.table("subjects").select("id, name, code, course_id").eq("teacher_id", tid).execute().data or []
         subject_ids = [s["id"] for s in subjects]
         course_ids = list({s["course_id"] for s in subjects if s.get("course_id")})
 
-        students = []
+        tasks = {
+            "leaves": lambda: db.table("leave_applications").select("id, status").eq("applicant_id", profile_id).execute().data or [],
+        }
         if course_ids:
-            students = g.db.table("students").select("id").in_("course_id", course_ids).execute().data or []
-
-        att_sessions = []
+            tasks["students"] = lambda: db.table("students").select("id").in_("course_id", course_ids).execute().data or []
         if subject_ids:
-            att_sessions = g.db.table("attendance_sessions").select("id, subject_id").in_("subject_id", subject_ids).execute().data or []
+            tasks["att_sessions"] = lambda: db.table("attendance_sessions").select("id, subject_id").in_("subject_id", subject_ids).execute().data or []
 
-        leaves = g.db.table("leave_applications").select("id, status").eq("applicant_id", g.profile["id"]).execute().data or []
+        fetched = run_parallel(tasks)
+        students = fetched.get("students", [])
+        att_sessions = fetched.get("att_sessions", [])
+        leaves = fetched["leaves"]
 
         chart_data = [
             {
@@ -225,21 +230,25 @@ def update_attendance(att_session_id: int):
             "updated_by": g.profile["id"],
         }).eq("id", att_session_id).execute()
 
-        updated_count = 0
+        records_payload = []
         for rec in data["records"]:
             status = rec.get("status", "absent")
             if status not in ("present", "absent", "late"):
                 status = "absent"
-            g.db.table("attendance_records").upsert({
+            records_payload.append({
                 "attendance_session_id": att_session_id,
                 "student_id": rec["student_id"],
                 "status": status,
                 "remarks": rec.get("remarks", ""),
                 "updated_by": g.profile["id"],
-            }, on_conflict="attendance_session_id,student_id").execute()
-            updated_count += 1
+            })
 
-        return jsonify({"updated": True, "records_updated": updated_count}), 200
+        if records_payload:
+            g.db.table("attendance_records").upsert(
+                records_payload, on_conflict="attendance_session_id,student_id"
+            ).execute()
+
+        return jsonify({"updated": True, "records_updated": len(records_payload)}), 200
     except Exception as exc:
         return safe_error(exc)
 

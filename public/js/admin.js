@@ -6,6 +6,7 @@
  */
 
 (async () => {
+  const statsBoot = ERP.cachedApi("/api/admin/stats").catch(() => null);
   const userData = await ERP.requireAuth("admin");
   if (!userData) return;
 
@@ -22,6 +23,7 @@
     { id: "courses", label: "Courses", icon: "bi-book" },
     { id: "sessions", label: "Sessions & Semesters", icon: "bi-calendar-range" },
     { id: "subjects", label: "Subjects", icon: "bi-journal-text" },
+    { id: "enrollments", label: "Enrollments", icon: "bi-card-checklist" },
     { id: "teachers", label: "Teachers", icon: "bi-person-workspace" },
     { id: "students", label: "Students", icon: "bi-people" },
     { id: "attendance", label: "Attendance Reports", icon: "bi-check2-square" },
@@ -104,8 +106,9 @@
   }
 
   // 1. OVERVIEW
-  async function loadOverview() {
-    const data = await ERP.api("/api/admin/stats");
+  async function loadOverview(signal, prefetched = null) {
+    const data = prefetched || (await ERP.cachedApi("/api/admin/stats", { signal }));
+    if (signal?.aborted) return;
     const c = data.counts;
     const cards = [
       { label: "Total Students", val: c.students, icon: "bi-people-fill", bg: "bg-primary-subtle text-primary" },
@@ -148,7 +151,13 @@
         </div>
       </div>`;
 
-    new Chart(document.getElementById("chart-courses"), {
+    await ERP.loadChartJs();
+    if (signal?.aborted) return;
+    const courseCanvas = document.getElementById("chart-courses");
+    const subjectCanvas = document.getElementById("chart-subjects");
+    if (!courseCanvas || !subjectCanvas) return;
+
+    new Chart(courseCanvas, {
       type: "bar",
       data: {
         labels: data.course_chart.map((x) => x.code || x.course),
@@ -160,7 +169,7 @@
       options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
     });
 
-    new Chart(document.getElementById("chart-subjects"), {
+    new Chart(subjectCanvas, {
       type: "bar",
       data: {
         labels: data.subject_chart.map((x) => x.subject),
@@ -173,8 +182,8 @@
   }
 
   // 2. DEPARTMENTS
-  async function loadDepartments() {
-    const rows = await ERP.api("/api/admin/departments");
+  async function loadDepartments(signal) {
+    const rows = await ERP.cachedApi("/api/admin/departments", { signal });
     const showForm = (item = null) => {
       openModal(item ? "Edit Department" : "Add Department", `
         <form id="dept-form" class="row g-3">
@@ -232,8 +241,11 @@
   }
 
   // 3. COURSES
-  async function loadCourses() {
-    const [rows, depts] = await Promise.all([ERP.api("/api/admin/courses"), ERP.api("/api/admin/departments")]);
+  async function loadCourses(signal) {
+    const [rows, depts] = await Promise.all([
+      ERP.cachedApi("/api/admin/courses", { signal }),
+      ERP.cachedApi("/api/admin/departments", { signal }),
+    ]);
     const showForm = (item = null) => {
       openModal(item ? "Edit Course" : "Add Course", `
         <form id="course-form" class="row g-3">
@@ -297,8 +309,11 @@
   }
 
   // 4. SESSIONS & SEMESTERS
-  async function loadSessions() {
-    const [sessions, semesters] = await Promise.all([ERP.api("/api/admin/sessions"), ERP.api("/api/admin/semesters")]);
+  async function loadSessions(signal) {
+    const [sessions, semesters] = await Promise.all([
+      ERP.cachedApi("/api/admin/sessions", { signal }),
+      ERP.cachedApi("/api/admin/semesters", { signal }),
+    ]);
 
     main.innerHTML = `
       <div class="row g-4">
@@ -421,12 +436,12 @@
   }
 
   // 5. SUBJECTS
-  async function loadSubjects() {
+  async function loadSubjects(signal) {
     const [rows, courses, semesters, teachers] = await Promise.all([
-      ERP.api("/api/admin/subjects"),
-      ERP.api("/api/admin/courses"),
-      ERP.api("/api/admin/semesters"),
-      ERP.api("/api/admin/teachers"),
+      ERP.cachedApi("/api/admin/subjects", { signal }),
+      ERP.cachedApi("/api/admin/courses", { signal }),
+      ERP.cachedApi("/api/admin/semesters", { signal }),
+      ERP.cachedApi("/api/admin/teachers", { signal }),
     ]);
 
     const showForm = (item = null) => {
@@ -495,9 +510,98 @@
     }));
   }
 
+  // 5b. ENROLLMENTS
+  async function loadEnrollments(signal) {
+    const rows = await ERP.cachedApi("/api/admin/enrollments", { signal });
+    const showForm = async () => {
+      const [students, subjects, semesters] = await Promise.all([
+        ERP.cachedApi("/api/admin/students"),
+        ERP.cachedApi("/api/admin/subjects"),
+        ERP.cachedApi("/api/admin/semesters"),
+      ]);
+      openModal("Enroll Student in Subject", `
+        <form id="enr-form" class="row g-3">
+          <div class="col-md-6"><label class="form-label">Student</label>
+            <select class="form-select" id="enr-stud" required>
+              ${students.map((s) => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="col-md-6"><label class="form-label">Subject</label>
+            <select class="form-select" id="enr-sub" required>
+              ${subjects.map((sb) => `<option value="${sb.id}">${esc(sb.code)} — ${esc(sb.name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="col-12"><label class="form-label">Semester (Optional)</label>
+            <select class="form-select" id="enr-sem">
+              <option value="">— Optional —</option>
+              ${semesters.map((sm) => `<option value="${sm.id}">${esc(sm.name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Enroll Student</button></div>
+        </form>`);
+      document.getElementById("enr-form").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await ERP.api("/api/admin/enrollments", {
+            method: "POST",
+            body: JSON.stringify({
+              student_id: Number(document.getElementById("enr-stud").value),
+              subject_id: Number(document.getElementById("enr-sub").value),
+              semester_id: document.getElementById("enr-sem").value ? Number(document.getElementById("enr-sem").value) : null,
+            }),
+          });
+          modal.hide();
+          ERP.showToast("Student enrolled!");
+          loadEnrollments();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    };
+
+    renderTableWithSearch({
+      title: "Subject Enrollments",
+      addLabel: "Enroll Student",
+      onAdd: showForm,
+      exportFn: (filtered) => {
+        ERP.exportCsv(
+          "enrollments.csv",
+          ["Roll No", "Student", "Subject Code", "Subject", "Semester"],
+          filtered.map((r) => [
+            r.students?.roll_number,
+            `${r.students?.profiles?.first_name || ""} ${r.students?.profiles?.last_name || ""}`.trim(),
+            r.subjects?.code,
+            r.subjects?.name,
+            r.semesters?.name || "",
+          ])
+        );
+      },
+      rows,
+      columns: [
+        { label: "Roll No", render: (r) => `<span class="badge bg-dark">${esc(r.students?.roll_number || "—")}</span>` },
+        { label: "Student", render: (r) => `<strong>${esc(r.students?.profiles?.first_name || "")} ${esc(r.students?.profiles?.last_name || "")}</strong>` },
+        { label: "Subject", render: (r) => `<span class="badge bg-info text-dark me-1">${esc(r.subjects?.code || "")}</span>${esc(r.subjects?.name || "—")}` },
+        { label: "Semester", render: (r) => esc(r.semesters?.name || "—") },
+        {
+          label: "Actions",
+          render: (r) => `<button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Remove</button>`,
+        },
+      ],
+    });
+    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+      if (!confirm("Remove this enrollment?")) return;
+      try {
+        await ERP.api(`/api/admin/enrollments?id=${b.dataset.del}`, { method: "DELETE" });
+        ERP.showToast("Enrollment removed");
+        loadEnrollments();
+      } catch (err) { ERP.showToast(err.message, "danger"); }
+    }));
+  }
+
   // 6. TEACHERS
-  async function loadTeachers() {
-    const [rows, depts] = await Promise.all([ERP.api("/api/admin/teachers"), ERP.api("/api/admin/departments")]);
+  async function loadTeachers(signal) {
+    const [rows, depts] = await Promise.all([
+      ERP.cachedApi("/api/admin/teachers", { signal }),
+      ERP.cachedApi("/api/admin/departments", { signal }),
+    ]);
     const showForm = (item = null) => {
       openModal(item ? "Edit Teacher" : "Add Teacher", `
         <form id="teach-form" class="row g-3">
@@ -567,12 +671,12 @@
   }
 
   // 7. STUDENTS
-  async function loadStudents() {
+  async function loadStudents(signal) {
     const [rows, courses, sessions, semesters] = await Promise.all([
-      ERP.api("/api/admin/students"),
-      ERP.api("/api/admin/courses"),
-      ERP.api("/api/admin/sessions"),
-      ERP.api("/api/admin/semesters"),
+      ERP.cachedApi("/api/admin/students", { signal }),
+      ERP.cachedApi("/api/admin/courses", { signal }),
+      ERP.cachedApi("/api/admin/sessions", { signal }),
+      ERP.cachedApi("/api/admin/semesters", { signal }),
     ]);
 
     const showForm = (item = null) => {
@@ -656,9 +760,12 @@
     }));
   }
 
-  // 8. ATTENDANCE VIEW
-  async function loadAttendance() {
-    const [sessionsList, subjects] = await Promise.all([ERP.api("/api/admin/attendance"), ERP.api("/api/admin/subjects")]);
+  // 8. ATTENDANCE VIEW (lazy incremental session rendering)
+  async function loadAttendance(signal) {
+    const [sessionsList, subjects] = await Promise.all([
+      ERP.cachedApi("/api/admin/attendance", { signal }),
+      ERP.cachedApi("/api/admin/subjects", { signal }),
+    ]);
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -671,48 +778,82 @@
           </div>
         </div>
         <div id="att-list"></div>
+        <div id="att-more-wrap" class="text-center mt-2"></div>
       </div>`;
 
+    let activeObserver = null;
     const drawList = (items) => {
+      if (activeObserver) activeObserver.disconnect();
       const box = document.getElementById("att-list");
+      const moreWrap = document.getElementById("att-more-wrap");
       if (items.length === 0) {
         box.innerHTML = `<div class="text-center text-muted py-4">No attendance sessions recorded yet.</div>`;
+        moreWrap.innerHTML = "";
         return;
       }
-      box.innerHTML = items.map((s) => {
-        const recs = s.attendance_records || [];
-        const present = recs.filter((r) => r.status === "present" || r.status === "late").length;
-        return `
-          <div class="border rounded p-3 mb-3">
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
-              <div>
-                <strong>${esc(s.subjects?.name)}</strong> (${esc(s.subjects?.code)})
-                <span class="text-muted ms-2">${esc(s.attendance_date)}</span>
+      const BATCH = 10;
+      let rendered = 0;
+      box.innerHTML = "";
+
+      const renderNextBatch = () => {
+        const slice = items.slice(rendered, rendered + BATCH);
+        if (slice.length === 0) return;
+        const html = slice.map((s) => {
+          const recs = s.attendance_records || [];
+          const present = recs.filter((r) => r.status === "present" || r.status === "late").length;
+          return `
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+                <div>
+                  <strong>${esc(s.subjects?.name)}</strong> (${esc(s.subjects?.code)})
+                  <span class="text-muted ms-2">${esc(s.attendance_date)}</span>
+                </div>
+                <span class="badge bg-primary">${present}/${recs.length} Present</span>
               </div>
-              <span class="badge bg-primary">${present}/${recs.length} Present</span>
-            </div>
-            <div class="small text-muted mb-2">Topic: ${esc(s.topic || "—")} &bull; Teacher: ${esc(s.teachers?.profiles?.first_name || "")} ${esc(s.teachers?.profiles?.last_name || "")}</div>
-            <div class="d-flex flex-wrap gap-1">
-              ${recs.map((r) => `<span class="badge ${r.status === "present" ? "bg-success-subtle text-success" : r.status === "late" ? "bg-warning-subtle text-warning" : "bg-danger-subtle text-danger"}">${esc(r.students?.roll_number)}: ${esc(r.status)}</span>`).join("")}
-            </div>
-          </div>`;
-      }).join("");
+              <div class="small text-muted mb-2">Topic: ${esc(s.topic || "—")} &bull; Teacher: ${esc(s.teachers?.profiles?.first_name || "")} ${esc(s.teachers?.profiles?.last_name || "")}</div>
+              <div class="d-flex flex-wrap gap-1">
+                ${recs.map((r) => `<span class="badge ${r.status === "present" ? "bg-success-subtle text-success" : r.status === "late" ? "bg-warning-subtle text-warning" : "bg-danger-subtle text-danger"}">${esc(r.students?.roll_number)}: ${esc(r.status)}</span>`).join("")}
+              </div>
+            </div>`;
+        }).join("");
+        box.insertAdjacentHTML("beforeend", html);
+        rendered += slice.length;
+
+        if (rendered < items.length) {
+          moreWrap.innerHTML = `<button id="att-load-more" class="btn btn-outline-primary btn-sm">Load More (${items.length - rendered} remaining)</button>`;
+          const btn = document.getElementById("att-load-more");
+          btn.onclick = renderNextBatch;
+          if ("IntersectionObserver" in window) {
+            activeObserver = new IntersectionObserver((entries) => {
+              if (entries[0]?.isIntersecting) {
+                activeObserver.disconnect();
+                renderNextBatch();
+              }
+            }, { rootMargin: "120px" });
+            activeObserver.observe(btn);
+          }
+        } else {
+          moreWrap.innerHTML = `<small class="text-muted">Showing all ${items.length} sessions</small>`;
+        }
+      };
+
+      renderNextBatch();
     };
 
     drawList(sessionsList);
     document.getElementById("att-sub-filter").onchange = async (e) => {
       const sid = e.target.value;
-      const filtered = await ERP.api(sid ? `/api/admin/attendance?subject_id=${sid}` : "/api/admin/attendance");
+      const filtered = await ERP.cachedApi(sid ? `/api/admin/attendance?subject_id=${sid}` : "/api/admin/attendance", { signal });
       drawList(filtered);
     };
   }
 
   // 9. EXAMS & RESULTS
-  async function loadResults() {
+  async function loadResults(signal) {
     const [exams, results, sessions] = await Promise.all([
-      ERP.api("/api/admin/examinations"),
-      ERP.api("/api/admin/results"),
-      ERP.api("/api/admin/sessions"),
+      ERP.cachedApi("/api/admin/examinations", { signal }),
+      ERP.cachedApi("/api/admin/results", { signal }),
+      ERP.cachedApi("/api/admin/sessions", { signal }),
     ]);
 
     main.innerHTML = `
@@ -732,7 +873,10 @@
                   <td>${esc(ex.academic_sessions?.name || "—")}</td>
                   <td>${esc(ex.exam_date || "—")}</td>
                   <td>${ex.max_marks}</td>
-                  <td><button class="btn btn-sm btn-outline-danger" data-del-exam="${ex.id}">Delete</button></td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary me-1" data-edit-exam="${ex.id}">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" data-del-exam="${ex.id}">Delete</button>
+                  </td>
                 </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No examinations yet</td></tr>`}
             </tbody>
           </table>
@@ -740,50 +884,88 @@
       </div>
 
       <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <h5 class="fw-bold mb-0">Published Results</h5>
-          <button id="export-res-btn" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</button>
+          <div class="d-flex flex-wrap gap-2">
+            <input type="search" id="res-search" class="form-control form-control-sm" style="width: 210px;" placeholder="Filter results...">
+            <button id="export-res-btn" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>
+            <button id="add-res-btn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Enter Result</button>
+          </div>
         </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Exam</th><th>Marks</th><th>Grade</th></tr></thead>
-            <tbody>
-              ${results.map((r) => `
-                <tr>
-                  <td>${esc(r.students?.roll_number)}</td>
-                  <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
-                  <td>${esc(r.subjects?.name)}</td>
-                  <td>${esc(r.examinations?.name)}</td>
-                  <td>${r.marks_obtained} / ${r.max_marks}</td>
-                  <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-                </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No results entered yet</td></tr>`}
-            </tbody>
+          <table class="table table-hover align-middle mb-2">
+            <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Exam</th><th>Marks</th><th>Grade</th><th>Actions</th></tr></thead>
+            <tbody id="res-tbody"></tbody>
           </table>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small id="res-info" class="text-muted"></small>
+          <div id="res-pager" class="btn-group btn-group-sm"></div>
         </div>
       </div>`;
 
-    document.getElementById("add-exam-btn").onclick = () => {
-      openModal("Create Examination", `
+    let resQuery = "";
+    let resPage = 1;
+    const drawResults = () => {
+      const q = resQuery.toLowerCase();
+      const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
+      const paged = ERP.paginate(filtered, resPage, 10);
+      document.getElementById("res-tbody").innerHTML = paged.rows.map((r) => `
+        <tr>
+          <td>${esc(r.students?.roll_number)}</td>
+          <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
+          <td>${esc(r.subjects?.name)}</td>
+          <td>${esc(r.examinations?.name)}</td>
+          <td>${r.marks_obtained} / ${r.max_marks}</td>
+          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
+          <td>
+            <button class="btn btn-sm btn-outline-primary me-1" data-edit-res="${r.id}">Edit</button>
+            <button class="btn btn-sm btn-outline-danger" data-del-res="${r.id}">Delete</button>
+          </td>
+        </tr>`).join("") || `<tr><td colspan="7" class="text-center text-muted">No results entered yet</td></tr>`;
+      document.getElementById("res-info").textContent = `Showing ${paged.rows.length} of ${paged.total} records (Page ${paged.page}/${paged.totalPages})`;
+      document.getElementById("res-pager").innerHTML = `
+        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="res-prev">Prev</button>
+        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="res-next">Next</button>`;
+      document.getElementById("res-prev").onclick = () => { resPage--; drawResults(); };
+      document.getElementById("res-next").onclick = () => { resPage++; drawResults(); };
+
+      main.querySelectorAll("[data-edit-res]").forEach((b) => (b.onclick = () => openResultModal(results.find((x) => x.id == b.dataset.editRes))));
+      main.querySelectorAll("[data-del-res]").forEach((b) => (b.onclick = async () => {
+        if (!confirm("Delete this result?")) return;
+        try {
+          await ERP.api(`/api/admin/results?id=${b.dataset.delRes}`, { method: "DELETE" });
+          ERP.showToast("Result deleted");
+          loadResults();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      }));
+    };
+    drawResults();
+    document.getElementById("res-search").oninput = (e) => { resQuery = e.target.value; resPage = 1; drawResults(); };
+
+    const openExamModal = (item = null) => {
+      openModal(item ? "Edit Examination" : "Create Examination", `
         <form id="exam-form" class="row g-3">
-          <div class="col-md-6"><label class="form-label">Exam Name</label><input class="form-control" id="ex-name" placeholder="Midterm Fall 2026" required></div>
+          <div class="col-md-6"><label class="form-label">Exam Name</label><input class="form-control" id="ex-name" value="${esc(item?.name || "")}" placeholder="Midterm Fall 2026" required></div>
           <div class="col-md-3"><label class="form-label">Type</label>
             <select class="form-select" id="ex-type">
-              <option value="internal">Internal</option><option value="midterm">Midterm</option><option value="final" selected>Final</option><option value="practical">Practical</option>
+              ${["internal", "midterm", "final", "practical"].map((t) => `<option value="${t}" ${(item?.exam_type || "final") === t ? "selected" : ""}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join("")}
             </select>
           </div>
-          <div class="col-md-3"><label class="form-label">Max Marks</label><input type="number" class="form-control" id="ex-max" value="100" required></div>
+          <div class="col-md-3"><label class="form-label">Max Marks</label><input type="number" class="form-control" id="ex-max" value="${item?.max_marks || 100}" required></div>
           <div class="col-md-6"><label class="form-label">Session</label>
-            <select class="form-select" id="ex-sess" required>${sessions.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select>
+            <select class="form-select" id="ex-sess" required>${sessions.map((s) => `<option value="${s.id}" ${item?.session_id === s.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-md-6"><label class="form-label">Date</label><input type="date" class="form-control" id="ex-date"></div>
-          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Create Exam</button></div>
+          <div class="col-md-6"><label class="form-label">Date</label><input type="date" class="form-control" id="ex-date" value="${esc(item?.exam_date || "")}"></div>
+          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">${item ? "Save Examination" : "Create Exam"}</button></div>
         </form>`);
       document.getElementById("exam-form").onsubmit = async (e) => {
         e.preventDefault();
         try {
           await ERP.api("/api/admin/examinations", {
-            method: "POST",
+            method: item ? "PUT" : "POST",
             body: JSON.stringify({
+              id: item?.id,
               name: document.getElementById("ex-name").value.trim(),
               exam_type: document.getElementById("ex-type").value,
               max_marks: Number(document.getElementById("ex-max").value),
@@ -792,11 +974,56 @@
             }),
           });
           modal.hide();
-          ERP.showToast("Examination created!");
+          ERP.showToast(item ? "Examination updated!" : "Examination created!");
           loadResults();
         } catch (err) { ERP.showToast(err.message, "danger"); }
       };
     };
+
+    const openResultModal = async (item = null) => {
+      const [students, subjects] = await Promise.all([
+        ERP.cachedApi("/api/admin/students"),
+        ERP.cachedApi("/api/admin/subjects"),
+      ]);
+      openModal(item ? "Edit Result" : "Enter Result", `
+        <form id="admin-res-form" class="row g-3">
+          <div class="col-md-6"><label class="form-label">Examination</label>
+            <select class="form-select" id="ar-exam" required>${exams.map((ex) => `<option value="${ex.id}" ${item?.examination_id === ex.id ? "selected" : ""}>${esc(ex.name)}</option>`).join("")}</select>
+          </div>
+          <div class="col-md-6"><label class="form-label">Subject</label>
+            <select class="form-select" id="ar-sub" required>${subjects.map((sb) => `<option value="${sb.id}" ${item?.subject_id === sb.id ? "selected" : ""}>${esc(sb.code)} — ${esc(sb.name)}</option>`).join("")}</select>
+          </div>
+          <div class="col-md-6"><label class="form-label">Student</label>
+            <select class="form-select" id="ar-stud" required>${students.map((st) => `<option value="${st.id}" ${item?.student_id === st.id ? "selected" : ""}>${esc(st.roll_number)} — ${esc(st.profiles?.first_name)} ${esc(st.profiles?.last_name)}</option>`).join("")}</select>
+          </div>
+          <div class="col-md-3"><label class="form-label">Marks</label><input type="number" step="0.5" min="0" class="form-control" id="ar-marks" value="${item?.marks_obtained ?? ""}" required></div>
+          <div class="col-md-3"><label class="form-label">Max Marks</label><input type="number" step="0.5" min="1" class="form-control" id="ar-max" value="${item?.max_marks ?? 100}" required></div>
+          <div class="col-12"><label class="form-label">Remarks</label><input type="text" class="form-control" id="ar-rem" value="${esc(item?.remarks || "")}"></div>
+          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Save Result</button></div>
+        </form>`);
+      document.getElementById("admin-res-form").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await ERP.api("/api/admin/results", {
+            method: item ? "PUT" : "POST",
+            body: JSON.stringify({
+              examination_id: Number(document.getElementById("ar-exam").value),
+              subject_id: Number(document.getElementById("ar-sub").value),
+              student_id: Number(document.getElementById("ar-stud").value),
+              marks_obtained: Number(document.getElementById("ar-marks").value),
+              max_marks: Number(document.getElementById("ar-max").value),
+              remarks: document.getElementById("ar-rem").value.trim(),
+            }),
+          });
+          modal.hide();
+          ERP.showToast("Result saved!");
+          loadResults();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    };
+
+    document.getElementById("add-exam-btn").onclick = () => openExamModal();
+    document.getElementById("add-res-btn").onclick = () => openResultModal();
 
     document.getElementById("export-res-btn").onclick = () => {
       ERP.exportCsv(
@@ -806,6 +1033,7 @@
       );
     };
 
+    main.querySelectorAll("[data-edit-exam]").forEach((b) => (b.onclick = () => openExamModal(exams.find((x) => x.id == b.dataset.editExam))));
     main.querySelectorAll("[data-del-exam]").forEach((b) => (b.onclick = async () => {
       if (!confirm("Delete this examination?")) return;
       try { await ERP.api(`/api/admin/examinations?id=${b.dataset.delExam}`, { method: "DELETE" }); loadResults(); }
@@ -814,8 +1042,8 @@
   }
 
   // 10. LEAVES
-  async function loadLeaves() {
-    const rows = await ERP.api("/api/admin/leaves");
+  async function loadLeaves(signal) {
+    const rows = await ERP.cachedApi("/api/admin/leaves", { signal });
     renderTableWithSearch({
       title: "Leave Applications",
       rows,
@@ -848,8 +1076,8 @@
   }
 
   // 11. FEEDBACK
-  async function loadFeedback() {
-    const rows = await ERP.api("/api/admin/feedback");
+  async function loadFeedback(signal) {
+    const rows = await ERP.cachedApi("/api/admin/feedback", { signal });
     renderTableWithSearch({
       title: "Student & Teacher Feedback",
       rows,
@@ -912,6 +1140,7 @@
     courses: loadCourses,
     sessions: loadSessions,
     subjects: loadSubjects,
+    enrollments: loadEnrollments,
     teachers: loadTeachers,
     students: loadStudents,
     attendance: loadAttendance,
@@ -919,16 +1148,22 @@
     leaves: loadLeaves,
     feedback: loadFeedback,
     notifications: loadNotificationsForm,
-    profile: () => window.renderProfileView(main, userData),
+    profile: async () => {
+      await ERP.loadProfileWidget();
+      window.renderProfileView(main, userData);
+    },
   };
+
+  const switchTab = ERP.createTabRunner(main, tabHandlers);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Admin / HOD",
     navItems,
     user: userData,
-    onTabChange: (tabId) => tabHandlers[tabId]?.(),
+    onTabChange: (tabId) => switchTab(tabId),
   });
 
-  loadOverview();
+  const prefetchedStats = await statsBoot;
+  loadOverview(null, prefetchedStats);
 })();

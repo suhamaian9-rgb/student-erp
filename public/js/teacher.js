@@ -1,11 +1,12 @@
 /**
  * Teacher Dashboard Controller.
- * Covers: Overview + Charts, Assigned Subjects & Students, Take Attendance,
+ * Covers: Overview + Lazy Charts, Assigned Subjects & Students, Take Attendance,
  * Update Attendance (with audit tracking), Enter/Edit Results, Leave Applications,
- * Feedback, and Profile.
+ * Feedback, and Lazy Profile.
  */
 
 (async () => {
+  const statsBoot = ERP.cachedApi("/api/teacher/stats").catch(() => null);
   const userData = await ERP.requireAuth("teacher");
   if (!userData) return;
 
@@ -24,8 +25,9 @@
   ];
 
   // 1. OVERVIEW
-  async function loadOverview() {
-    const data = await ERP.api("/api/teacher/stats");
+  async function loadOverview(signal, prefetched = null) {
+    const data = prefetched || (await ERP.cachedApi("/api/teacher/stats", { signal }));
+    if (signal?.aborted) return;
     const c = data.counts;
     const cards = [
       { label: "Assigned Subjects", val: c.subjects, icon: "bi-journal-text", bg: "bg-primary-subtle text-primary" },
@@ -52,7 +54,12 @@
         <canvas id="teacher-att-chart" height="120"></canvas>
       </div>`;
 
-    new Chart(document.getElementById("teacher-att-chart"), {
+    await ERP.loadChartJs();
+    if (signal?.aborted) return;
+    const chartEl = document.getElementById("teacher-att-chart");
+    if (!chartEl) return;
+
+    new Chart(chartEl, {
       type: "bar",
       data: {
         labels: data.subject_chart.map((x) => x.subject),
@@ -63,8 +70,11 @@
   }
 
   // 2. SUBJECTS & STUDENTS
-  async function loadSubjectsAndStudents() {
-    const [subjects, students] = await Promise.all([ERP.api("/api/teacher/subjects"), ERP.api("/api/teacher/students")]);
+  async function loadSubjectsAndStudents(signal) {
+    const [subjects, students] = await Promise.all([
+      ERP.cachedApi("/api/teacher/subjects", { signal }),
+      ERP.cachedApi("/api/teacher/students", { signal }),
+    ]);
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4 mb-4">
         <h5 class="fw-bold mb-3">Assigned Subjects</h5>
@@ -91,16 +101,23 @@
           <input type="search" id="stud-search" class="form-control form-control-sm" style="width:220px" placeholder="Filter students...">
         </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
+          <table class="table table-hover align-middle mb-2">
             <thead><tr><th>Roll No</th><th>Name</th><th>Email</th><th>Course</th><th>Session</th></tr></thead>
             <tbody id="t-stud-body"></tbody>
           </table>
         </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small id="t-stud-info" class="text-muted"></small>
+          <div id="t-stud-pager" class="btn-group btn-group-sm"></div>
+        </div>
       </div>`;
 
-    const draw = (q = "") => {
+    let q = "";
+    let page = 1;
+    const draw = () => {
       const filtered = q ? students.filter((s) => JSON.stringify(s).toLowerCase().includes(q.toLowerCase())) : students;
-      document.getElementById("t-stud-body").innerHTML = filtered.map((s) => `
+      const paged = ERP.paginate(filtered, page, 10);
+      document.getElementById("t-stud-body").innerHTML = paged.rows.map((s) => `
         <tr>
           <td><span class="badge bg-dark">${esc(s.roll_number)}</span></td>
           <td><strong>${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</strong></td>
@@ -108,14 +125,23 @@
           <td>${esc(s.courses?.name || "—")}</td>
           <td>${esc(s.academic_sessions?.name || "—")}</td>
         </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No students found.</td></tr>`;
+      document.getElementById("t-stud-info").textContent = `Showing ${paged.rows.length} of ${paged.total} students (Page ${paged.page}/${paged.totalPages})`;
+      document.getElementById("t-stud-pager").innerHTML = `
+        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="ts-prev">Prev</button>
+        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="ts-next">Next</button>`;
+      document.getElementById("ts-prev").onclick = () => { page--; draw(); };
+      document.getElementById("ts-next").onclick = () => { page++; draw(); };
     };
     draw();
-    document.getElementById("stud-search").oninput = (e) => draw(e.target.value);
+    document.getElementById("stud-search").oninput = (e) => { q = e.target.value; page = 1; draw(); };
   }
 
   // 3. TAKE ATTENDANCE
-  async function loadTakeAttendance() {
-    const [subjects, sessions] = await Promise.all([ERP.api("/api/teacher/subjects"), ERP.api("/api/teacher/sessions")]);
+  async function loadTakeAttendance(signal) {
+    const [subjects, sessions] = await Promise.all([
+      ERP.cachedApi("/api/teacher/subjects", { signal }),
+      ERP.cachedApi("/api/teacher/sessions", { signal }),
+    ]);
     const today = new Date().toISOString().split("T")[0];
 
     main.innerHTML = `
@@ -147,8 +173,9 @@
       const subjectId = document.getElementById("att-sub").value;
       const sessionId = document.getElementById("att-sess").value;
       if (!subjectId || !sessionId) return ERP.showToast("Select subject and session", "warning");
-      const students = await ERP.api(`/api/teacher/students?subject_id=${subjectId}&session_id=${sessionId}`);
       const area = document.getElementById("att-students-area");
+      ERP.renderSkeleton(area, "table");
+      const students = await ERP.cachedApi(`/api/teacher/students?subject_id=${subjectId}&session_id=${sessionId}`, { signal });
       if (students.length === 0) {
         area.innerHTML = `<div class="alert alert-info">No students found for this subject and session.</div>`;
         return;
@@ -201,8 +228,8 @@
   }
 
   // 4. UPDATE ATTENDANCE
-  async function loadUpdateAttendance() {
-    const sessions = await ERP.api("/api/teacher/attendance");
+  async function loadUpdateAttendance(signal) {
+    const sessions = await ERP.cachedApi("/api/teacher/attendance", { signal });
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
         <h5 class="fw-bold mb-3">Update Past Attendance</h5>
@@ -272,11 +299,11 @@
   }
 
   // 5. RESULTS
-  async function loadResults() {
+  async function loadResults(signal) {
     const [exams, subjects, results] = await Promise.all([
-      ERP.api("/api/teacher/examinations"),
-      ERP.api("/api/teacher/subjects"),
-      ERP.api("/api/teacher/results"),
+      ERP.cachedApi("/api/teacher/examinations", { signal }),
+      ERP.cachedApi("/api/teacher/subjects", { signal }),
+      ERP.cachedApi("/api/teacher/results", { signal }),
     ]);
 
     main.innerHTML = `
@@ -301,36 +328,73 @@
           </div>
           <div class="col-md-2">
             <label class="form-label">Max Marks</label>
-            <input type="number" step="0.5" min="1" id="r-max" class="form-control" value="100" required>
+            <input type="number" step="0.5" min="1" id="r-max" class="form-control" value="${exams[0]?.max_marks || 100}" required>
           </div>
           <div class="col-12"><button class="btn btn-primary btn-sm" type="submit">Save Result</button></div>
         </form>
       </div>
 
       <div class="card panel-card p-3 p-md-4">
-        <h5 class="fw-bold mb-3">Recorded Results</h5>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <h5 class="fw-bold mb-0">Recorded Results</h5>
+          <div class="d-flex gap-2">
+            <input type="search" id="tr-search" class="form-control form-control-sm" style="width: 200px;" placeholder="Filter results...">
+            <button id="tr-export" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>
+          </div>
+        </div>
         <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
+          <table class="table table-hover align-middle mb-2">
             <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Exam</th><th>Marks</th><th>Grade</th></tr></thead>
-            <tbody>
-              ${results.map((r) => `
-                <tr>
-                  <td>${esc(r.students?.roll_number)}</td>
-                  <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
-                  <td>${esc(r.subjects?.name)}</td>
-                  <td>${esc(r.examinations?.name)}</td>
-                  <td>${r.marks_obtained} / ${r.max_marks}</td>
-                  <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-                </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No results recorded yet.</td></tr>`}
-            </tbody>
+            <tbody id="tr-tbody"></tbody>
           </table>
         </div>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small id="tr-info" class="text-muted"></small>
+          <div id="tr-pager" class="btn-group btn-group-sm"></div>
+        </div>
       </div>`;
+
+    let trQuery = "";
+    let trPage = 1;
+    const drawResults = () => {
+      const q = trQuery.toLowerCase();
+      const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
+      const paged = ERP.paginate(filtered, trPage, 10);
+      document.getElementById("tr-tbody").innerHTML = paged.rows.map((r) => `
+        <tr>
+          <td>${esc(r.students?.roll_number)}</td>
+          <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
+          <td>${esc(r.subjects?.name)}</td>
+          <td>${esc(r.examinations?.name)}</td>
+          <td>${r.marks_obtained} / ${r.max_marks}</td>
+          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
+        </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No results recorded yet.</td></tr>`;
+      document.getElementById("tr-info").textContent = `Showing ${paged.rows.length} of ${paged.total} results (Page ${paged.page}/${paged.totalPages})`;
+      document.getElementById("tr-pager").innerHTML = `
+        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="tr-prev">Prev</button>
+        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="tr-next">Next</button>`;
+      document.getElementById("tr-prev").onclick = () => { trPage--; drawResults(); };
+      document.getElementById("tr-next").onclick = () => { trPage++; drawResults(); };
+    };
+    drawResults();
+    document.getElementById("tr-search").oninput = (e) => { trQuery = e.target.value; trPage = 1; drawResults(); };
+    document.getElementById("tr-export").onclick = () => {
+      ERP.exportCsv(
+        "teacher-results.csv",
+        ["Roll No", "Student", "Subject", "Exam", "Marks", "Max Marks", "Grade"],
+        results.map((r) => [r.students?.roll_number, `${r.students?.profiles?.first_name} ${r.students?.profiles?.last_name}`, r.subjects?.name, r.examinations?.name, r.marks_obtained, r.max_marks, r.grade])
+      );
+    };
+
+    document.getElementById("r-exam").onchange = (e) => {
+      const opt = e.target.selectedOptions[0];
+      if (opt?.dataset.max) document.getElementById("r-max").value = opt.dataset.max;
+    };
 
     const loadStudentsForSubject = async () => {
       const sid = document.getElementById("r-sub").value;
       if (!sid) return;
-      const studs = await ERP.api(`/api/teacher/students?subject_id=${sid}`);
+      const studs = await ERP.cachedApi(`/api/teacher/students?subject_id=${sid}`, { signal });
       document.getElementById("r-stud").innerHTML = studs.map((s) => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</option>`).join("") || `<option value="">No students</option>`;
     };
     if (subjects.length > 0) loadStudentsForSubject();
@@ -356,8 +420,8 @@
   }
 
   // 6. LEAVES
-  async function loadLeaves() {
-    const rows = await ERP.api("/api/teacher/leaves");
+  async function loadLeaves(signal) {
+    const rows = await ERP.cachedApi("/api/teacher/leaves", { signal });
     main.innerHTML = `
       <div class="row g-4">
         <div class="col-lg-5">
@@ -403,8 +467,8 @@
   }
 
   // 7. FEEDBACK
-  async function loadFeedback() {
-    const rows = await ERP.api("/api/teacher/feedback");
+  async function loadFeedback(signal) {
+    const rows = await ERP.cachedApi("/api/teacher/feedback", { signal });
     main.innerHTML = `
       <div class="row g-4">
         <div class="col-lg-5">
@@ -452,16 +516,22 @@
     results: loadResults,
     leaves: loadLeaves,
     feedback: loadFeedback,
-    profile: () => window.renderProfileView(main, userData),
+    profile: async () => {
+      await ERP.loadProfileWidget();
+      window.renderProfileView(main, userData);
+    },
   };
+
+  const switchTab = ERP.createTabRunner(main, tabHandlers);
 
   ERP.renderShell({
     title: "Overview",
     roleLabel: "Teacher Portal",
     navItems,
     user: userData,
-    onTabChange: (tabId) => tabHandlers[tabId]?.(),
+    onTabChange: (tabId) => switchTab(tabId),
   });
 
-  loadOverview();
+  const prefetchedStats = await statsBoot;
+  loadOverview(null, prefetchedStats);
 })();

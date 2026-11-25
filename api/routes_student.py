@@ -2,7 +2,7 @@
 
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import require_fields, safe_error
+from api.helpers import require_fields, run_parallel, safe_error
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -26,18 +26,26 @@ def get_stats():
         if not student:
             return jsonify({"error": "Student record not found"}), 404
         sid = student["id"]
+        db = g.db
+        profile_id = g.profile["id"]
+        course_id = student.get("course_id")
 
-        records = g.db.table("attendance_records").select("id, status").eq("student_id", sid).execute().data or []
+        tasks = {
+            "records": lambda: db.table("attendance_records").select("id, status").eq("student_id", sid).execute().data or [],
+            "results": lambda: db.table("results").select("id").eq("student_id", sid).execute().data or [],
+            "leaves": lambda: db.table("leave_applications").select("id, status").eq("applicant_id", profile_id).execute().data or [],
+        }
+        if course_id:
+            tasks["subjects"] = lambda: db.table("subjects").select("id").eq("course_id", course_id).execute().data or []
+
+        fetched = run_parallel(tasks)
+        records = fetched["records"]
         total_att = len(records)
         present_att = sum(1 for r in records if r.get("status") in ("present", "late"))
         att_pct = round((present_att / total_att) * 100, 1) if total_att > 0 else 0.0
-
-        subjects = []
-        if student.get("course_id"):
-            subjects = g.db.table("subjects").select("id").eq("course_id", student["course_id"]).execute().data or []
-
-        results = g.db.table("results").select("id").eq("student_id", sid).execute().data or []
-        leaves = g.db.table("leave_applications").select("id, status").eq("applicant_id", g.profile["id"]).execute().data or []
+        subjects = fetched.get("subjects", [])
+        results = fetched["results"]
+        leaves = fetched["leaves"]
 
         return jsonify({
             "student": student,

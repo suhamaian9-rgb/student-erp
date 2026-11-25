@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import compute_grade, require_fields, safe_error
+from api.helpers import compute_grade, require_fields, run_parallel, safe_error
 from api.supabase_client import get_admin_client
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -47,14 +47,25 @@ def _handle_crud(table: str, required: list[str], updatable: list[str], order_co
 @require_role("admin")
 def get_stats():
     """Return institutional summary counts and chart datasets for the Admin dashboard."""
-    students = g.db.table("students").select("id, course_id").execute().data or []
-    teachers = g.db.table("teachers").select("id").execute().data or []
-    courses = g.db.table("courses").select("id, name, code").execute().data or []
-    subjects = g.db.table("subjects").select("id, name, course_id").execute().data or []
-    departments = g.db.table("departments").select("id").execute().data or []
-    leaves = g.db.table("leave_applications").select("id, status").execute().data or []
-    att_sessions = g.db.table("attendance_sessions").select("id, subject_id").execute().data or []
-    feedbacks = g.db.table("feedback").select("id, reply").execute().data or []
+    db = g.db
+    fetched = run_parallel({
+        "students": lambda: db.table("students").select("id, course_id").execute().data or [],
+        "teachers": lambda: db.table("teachers").select("id").execute().data or [],
+        "courses": lambda: db.table("courses").select("id, name, code").execute().data or [],
+        "subjects": lambda: db.table("subjects").select("id, name, course_id").execute().data or [],
+        "departments": lambda: db.table("departments").select("id").execute().data or [],
+        "leaves": lambda: db.table("leave_applications").select("id, status").execute().data or [],
+        "att_sessions": lambda: db.table("attendance_sessions").select("id, subject_id").execute().data or [],
+        "feedbacks": lambda: db.table("feedback").select("id, reply").execute().data or [],
+    })
+    students = fetched["students"]
+    teachers = fetched["teachers"]
+    courses = fetched["courses"]
+    subjects = fetched["subjects"]
+    departments = fetched["departments"]
+    leaves = fetched["leaves"]
+    att_sessions = fetched["att_sessions"]
+    feedbacks = fetched["feedbacks"]
 
     # Students and subjects per course
     course_chart = []

@@ -15,7 +15,7 @@ from flask import Flask, g, jsonify, make_response, request
 
 load_dotenv()
 
-from api.auth_utils import ACCESS_COOKIE, REFRESH_COOKIE, require_auth  # noqa: E402
+from api.auth_utils import ACCESS_COOKIE, REFRESH_COOKIE, require_auth, set_auth_cookies  # noqa: E402
 from api.helpers import USERNAME_RE, require_fields  # noqa: E402
 from api.routes_admin import admin_bp  # noqa: E402
 from api.routes_student import student_bp  # noqa: E402
@@ -29,18 +29,22 @@ app.register_blueprint(teacher_bp)
 app.register_blueprint(student_bp)
 
 
-def _is_secure_cookie() -> bool:
-    return bool(os.environ.get("VERCEL") or request.is_secure)
-
-
 @app.after_request
-def add_security_headers(response):
-    """Attach security headers to all responses."""
+def add_security_and_session_headers(response):
+    """Attach security headers and persist rotated session cookies if refreshed."""
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    refreshed = getattr(g, "refreshed_session", None)
+    if refreshed and getattr(refreshed, "access_token", None):
+        set_auth_cookies(
+            response,
+            refreshed.access_token,
+            getattr(refreshed, "refresh_token", "") or request.cookies.get(REFRESH_COOKIE, ""),
+            remember=True,
+        )
     return response
 
 
@@ -102,26 +106,7 @@ def login_with_identifier():
             return jsonify({"error": "Account is deactivated"}), 403
 
         resp = make_response(jsonify({"authenticated": True, "role": prof["role"]}), 200)
-        max_age = 60 * 60 * 24 * 7 if remember else None
-        secure = _is_secure_cookie()
-        resp.set_cookie(
-            ACCESS_COOKIE,
-            res.session.access_token,
-            httponly=True,
-            secure=secure,
-            samesite="Lax",
-            max_age=max_age,
-            path="/",
-        )
-        resp.set_cookie(
-            REFRESH_COOKIE,
-            res.session.refresh_token,
-            httponly=True,
-            secure=secure,
-            samesite="Lax",
-            max_age=max_age,
-            path="/",
-        )
+        set_auth_cookies(resp, res.session.access_token, res.session.refresh_token, remember=remember)
         return resp
     except Exception:
         return jsonify({"error": "Invalid username or password"}), 401
