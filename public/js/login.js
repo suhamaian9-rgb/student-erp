@@ -63,11 +63,17 @@
     });
   }
 
+  const refreshIcons = () => {
+    if (window.lucide) window.lucide.createIcons();
+  };
+  refreshIcons();
+
   if (togglePw && pwInput) {
     togglePw.addEventListener("click", () => {
       const show = pwInput.type === "password";
       pwInput.type = show ? "text" : "password";
-      togglePw.innerHTML = `<i class="bi bi-eye${show ? "-slash" : ""}"></i>`;
+      togglePw.innerHTML = `<i data-lucide="${show ? "eye-off" : "eye"}"></i>`;
+      refreshIcons();
       mascot?.classList.add("cover-eyes");
       mascot?.classList.toggle("peek-eye", show);
     });
@@ -132,7 +138,8 @@
           authCard.classList.add("auth-shake");
         }
         loginBtn.disabled = false;
-        loginBtn.innerHTML = `<i class="bi bi-box-arrow-in-right me-1"></i> Sign In`;
+        loginBtn.innerHTML = `<i data-lucide="log-in" class="me-1"></i> Sign In`;
+        refreshIcons();
       }
     });
   }

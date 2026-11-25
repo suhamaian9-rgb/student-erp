@@ -493,8 +493,8 @@ window.ERP = (() => {
           </div>
           <div class="d-flex flex-wrap align-items-center gap-2">
             <input type="search" data-dt="search" class="form-control form-control-sm" style="width: 210px;" placeholder="${escapeHtml(searchPlaceholder)}">
-            ${exportFn ? `<button type="button" data-dt="export" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>` : ""}
-            ${addLabel ? `<button type="button" data-dt="add" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>${escapeHtml(addLabel)}</button>` : ""}
+            ${exportFn ? `<button type="button" data-dt="export" class="btn btn-outline-success btn-sm"><i data-lucide="download" class="me-1"></i>CSV</button>` : ""}
+            ${addLabel ? `<button type="button" data-dt="add" class="btn btn-primary btn-sm"><i data-lucide="plus" class="me-1"></i>${escapeHtml(addLabel)}</button>` : ""}
           </div>
         </div>
         ${(resolvedFilters.length > 0 || sortableCols.length > 0) ? `
@@ -513,7 +513,7 @@ window.ERP = (() => {
                 `).join("")}
               </select>` : ""}
             <button type="button" data-dt="reset" class="btn btn-outline-secondary btn-sm d-none">
-              <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
+              <i data-lucide="rotate-ccw" class="me-1"></i>Reset
             </button>
           </div>` : ""}
         <div class="table-responsive">
@@ -522,7 +522,7 @@ window.ERP = (() => {
               <tr>
                 ${columns.map((c, idx) => typeof c.sortValue === "function"
                   ? `<th data-dt-th="${idx}" style="cursor:pointer; user-select:none; white-space:nowrap;" title="Click to sort by ${escapeHtml(c.label)}">
-                      ${escapeHtml(c.label)} <i class="bi bi-arrow-down-up small text-muted ms-1" data-dt-icon="${idx}"></i>
+                      ${escapeHtml(c.label)} <span class="ms-1 text-muted d-inline-flex align-items-center" data-dt-icon="${idx}"><i data-lucide="arrow-up-down"></i></span>
                     </th>`
                   : `<th>${escapeHtml(c.label)}</th>`).join("")}
               </tr>
@@ -581,16 +581,21 @@ window.ERP = (() => {
     }
 
     function syncIndicators() {
-      container.querySelectorAll("[data-dt-icon]").forEach((icon) => {
-        const idx = Number(icon.dataset.dtIcon);
+      container.querySelectorAll("[data-dt-icon]").forEach((wrap) => {
+        const idx = Number(wrap.dataset.dtIcon);
+        let name = "arrow-up-down";
+        let colorCls = "text-muted";
         if (idx === sortCol && sortDir === "asc") {
-          icon.className = "bi bi-sort-up small text-primary ms-1";
+          name = "arrow-up-narrow-wide";
+          colorCls = "text-primary";
         } else if (idx === sortCol && sortDir === "desc") {
-          icon.className = "bi bi-sort-down small text-primary ms-1";
-        } else {
-          icon.className = "bi bi-arrow-down-up small text-muted ms-1";
+          name = "arrow-down-wide-narrow";
+          colorCls = "text-primary";
         }
+        wrap.className = `ms-1 ${colorCls} d-inline-flex align-items-center`;
+        wrap.innerHTML = `<i data-lucide="${name}"></i>`;
       });
+      refreshIcons();
       if (sortSelect) {
         sortSelect.value = sortCol >= 0 && sortDir ? `${sortCol}:${sortDir}` : "";
       }
@@ -732,7 +737,7 @@ window.ERP = (() => {
       const cancelBtn = modalEl.querySelector("#erp-confirm-cancel");
       const okBtn = modalEl.querySelector("#erp-confirm-ok");
 
-      titleEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-${escapeHtml(variant)}"></i><span>${escapeHtml(title)}</span>`;
+      titleEl.innerHTML = `<i data-lucide="alert-triangle" class="text-${escapeHtml(variant)}"></i><span>${escapeHtml(title)}</span>`;
       msgEl.textContent = message;
       if (detail) {
         detailEl.textContent = detail;
@@ -829,6 +834,29 @@ window.ERP = (() => {
     return `<span class="badge ${cls} text-capitalize">${escapeHtml(status)}</span>`;
   }
 
+  let _iconRaf = 0;
+  function refreshIcons() {
+    if (!window.lucide) return;
+    if (_iconRaf) cancelAnimationFrame(_iconRaf);
+    _iconRaf = requestAnimationFrame(() => {
+      _iconRaf = 0;
+      window.lucide.createIcons();
+    });
+  }
+
+  if (typeof MutationObserver !== "undefined" && document.body) {
+    const iconObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.addedNodes.length) {
+          refreshIcons();
+          break;
+        }
+      }
+    });
+    iconObserver.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("DOMContentLoaded", refreshIcons);
+  }
+
   return {
     api,
     cachedApi,
@@ -851,6 +879,7 @@ window.ERP = (() => {
     confirmAction,
     exportCsv,
     statusBadge,
+    refreshIcons,
     getUserData: () => currentUserData,
   };
 })();

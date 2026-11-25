@@ -14,14 +14,14 @@
   const esc = ERP.escapeHtml;
 
   const navItems = [
-    { id: "overview", label: "Overview", icon: "bi-speedometer2" },
-    { id: "subjects", label: "My Subjects & Students", icon: "bi-journal-bookmark" },
-    { id: "take-attendance", label: "Take Attendance", icon: "bi-check2-square" },
-    { id: "update-attendance", label: "Update Attendance", icon: "bi-pencil-square" },
-    { id: "results", label: "Examination Results", icon: "bi-award" },
-    { id: "leaves", label: "Leave Applications", icon: "bi-calendar-x" },
-    { id: "feedback", label: "Feedback", icon: "bi-chat-left-text" },
-    { id: "profile", label: "My Profile", icon: "bi-person-circle" },
+    { id: "overview", label: "Overview", icon: "layout-dashboard" },
+    { id: "subjects", label: "My Subjects & Students", icon: "book-marked" },
+    { id: "take-attendance", label: "Take Attendance", icon: "check-square" },
+    { id: "update-attendance", label: "Update Attendance", icon: "edit" },
+    { id: "results", label: "Examination Results", icon: "award" },
+    { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
+    { id: "feedback", label: "Feedback", icon: "message-square" },
+    { id: "profile", label: "My Profile", icon: "user-circle" },
   ];
 
   // 1. OVERVIEW
@@ -30,10 +30,10 @@
     if (signal?.aborted) return;
     const c = data.counts;
     const cards = [
-      { label: "Assigned Subjects", val: c.subjects, icon: "bi-journal-text", bg: "bg-primary-subtle text-primary" },
-      { label: "Students", val: c.students, icon: "bi-people-fill", bg: "bg-success-subtle text-success" },
-      { label: "Attendance Taken", val: c.attendance_sessions, icon: "bi-check2-square", bg: "bg-info-subtle text-info" },
-      { label: "Leave Requests", val: c.leaves, icon: "bi-calendar-x", bg: "bg-warning-subtle text-warning" },
+      { label: "Assigned Subjects", val: c.subjects, icon: "book-marked", bg: "bg-primary-subtle text-primary" },
+      { label: "Students", val: c.students, icon: "users", bg: "bg-success-subtle text-success" },
+      { label: "Attendance Taken", val: c.attendance_sessions, icon: "check-square", bg: "bg-info-subtle text-info" },
+      { label: "Leave Requests", val: c.leaves, icon: "calendar-x", bg: "bg-warning-subtle text-warning" },
     ];
 
     main.innerHTML = `
@@ -181,7 +181,7 @@
             </tbody>
           </table>
         </div>
-        <button id="save-att-btn" class="btn btn-success"><i class="bi bi-save me-1"></i>Save Attendance</button>`;
+        <button id="save-att-btn" class="btn btn-success"><i data-lucide="save" class="me-1"></i>Save Attendance</button>`;
 
       document.getElementById("save-att-btn").onclick = async () => {
         const records = [...area.querySelectorAll("tr[data-sid]")].map((tr) => ({

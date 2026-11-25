@@ -90,6 +90,7 @@ def _render_error_page(code: int, headline: str, desc: str):
         f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
         f'<meta name="viewport" content="width=device-width,initial-scale=1.0">'
         f'<title>{code} — University ERP</title>'
+        f'<link rel="icon" type="image/svg+xml" href="/favicon.svg">'
         f'<link href="/css/error.css" rel="stylesheet"></head><body>'
         f'<main id="error-container">'
         f'<span class="geo-shape geo-ring" aria-hidden="true"></span>'

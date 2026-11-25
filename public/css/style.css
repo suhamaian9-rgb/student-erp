@@ -24,6 +24,33 @@ body {
   font-size: 0.95rem;
   line-height: 1.5;
   min-height: 100vh;
+  overflow-x: clip;
+}
+
+/* Lucide Icon Sizing & Alignment */
+.lucide {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.15em;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.lucide-lg {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+.lucide-xl {
+  width: 2rem;
+  height: 2rem;
+}
+
+.erp-notif-menu {
+  width: 300px;
+  max-width: calc(100vw - 1.5rem);
+  max-height: 360px;
+  overflow-y: auto;
 }
 
 h1, h2, h3, .font-serif {
@@ -454,6 +481,8 @@ h1, h2, h3, .font-serif {
     top: 0;
     bottom: 0;
     left: 0;
+    height: 100dvh;
+    max-width: 85vw;
     transform: translateX(-100%);
   }
   .erp-sidebar.show {
@@ -472,6 +501,35 @@ h1, h2, h3, .font-serif {
   .erp-content {
     padding: 1.15rem;
   }
+}
+
+@media (max-width: 575.98px) {
+  .erp-topbar {
+    padding: 0.65rem 1rem;
+  }
+  .erp-content {
+    padding: 0.9rem;
+  }
+  .auth-form-pane {
+    padding: 1.25rem 0.9rem;
+  }
+  .auth-card {
+    padding: 1.5rem !important;
+  }
+  .panel-card .d-flex.flex-wrap > input,
+  .panel-card .d-flex.flex-wrap > select {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+.table-responsive {
+  -webkit-overflow-scrolling: touch;
+}
+
+.table td .btn,
+.table td .btn-group {
+  white-space: nowrap;
 }
 
 /* Instant Loading Skeletons */

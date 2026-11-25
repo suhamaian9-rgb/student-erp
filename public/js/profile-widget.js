@@ -36,7 +36,7 @@ window.renderProfileView = function renderProfileView(container, userData, onUpd
 
   container.innerHTML = `
     <div class="card panel-card p-4" style="max-width: 780px;">
-      <h5 class="fw-bold mb-3"><i class="bi bi-person-circle me-2 text-primary"></i>My Profile</h5>
+      <h5 class="fw-bold mb-3"><i data-lucide="user-circle" class="me-2 text-primary"></i>My Profile</h5>
       <form id="profile-edit-form" class="row g-3">
         <div class="col-md-6">
           <label class="form-label">First Name</label>

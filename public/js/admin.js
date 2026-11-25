@@ -18,20 +18,20 @@
   const modalBody = document.getElementById("adminModalBody");
 
   const navItems = [
-    { id: "overview", label: "Overview", icon: "bi-speedometer2" },
-    { id: "departments", label: "Departments", icon: "bi-building" },
-    { id: "courses", label: "Courses", icon: "bi-book" },
-    { id: "sessions", label: "Sessions & Semesters", icon: "bi-calendar-range" },
-    { id: "subjects", label: "Subjects", icon: "bi-journal-text" },
-    { id: "enrollments", label: "Enrollments", icon: "bi-card-checklist" },
-    { id: "teachers", label: "Teachers", icon: "bi-person-workspace" },
-    { id: "students", label: "Students", icon: "bi-people" },
-    { id: "attendance", label: "Attendance Reports", icon: "bi-check2-square" },
-    { id: "results", label: "Exams & Results", icon: "bi-award" },
-    { id: "leaves", label: "Leave Applications", icon: "bi-calendar-x" },
-    { id: "feedback", label: "Feedback", icon: "bi-chat-left-text" },
-    { id: "notifications", label: "Send Notice", icon: "bi-megaphone" },
-    { id: "profile", label: "My Profile", icon: "bi-person-circle" },
+    { id: "overview", label: "Overview", icon: "layout-dashboard" },
+    { id: "departments", label: "Departments", icon: "building-2" },
+    { id: "courses", label: "Courses", icon: "book-open" },
+    { id: "sessions", label: "Sessions & Semesters", icon: "calendar-range" },
+    { id: "subjects", label: "Subjects", icon: "book-marked" },
+    { id: "enrollments", label: "Enrollments", icon: "clipboard-list" },
+    { id: "teachers", label: "Teachers", icon: "briefcase" },
+    { id: "students", label: "Students", icon: "users" },
+    { id: "attendance", label: "Attendance Reports", icon: "check-square" },
+    { id: "results", label: "Exams & Results", icon: "award" },
+    { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
+    { id: "feedback", label: "Feedback", icon: "message-square" },
+    { id: "notifications", label: "Send Notice", icon: "megaphone" },
+    { id: "profile", label: "My Profile", icon: "user-circle" },
   ];
 
   function openModal(title, html) {
@@ -50,12 +50,12 @@
     if (signal?.aborted) return;
     const c = data.counts;
     const cards = [
-      { label: "Total Students", val: c.students, icon: "bi-people-fill", bg: "bg-primary-subtle text-primary" },
-      { label: "Total Teachers", val: c.teachers, icon: "bi-person-workspace", bg: "bg-success-subtle text-success" },
-      { label: "Courses", val: c.courses, icon: "bi-book-fill", bg: "bg-info-subtle text-info" },
-      { label: "Subjects", val: c.subjects, icon: "bi-journal-text", bg: "bg-warning-subtle text-warning" },
-      { label: "Pending Leaves", val: c.pending_leaves, icon: "bi-calendar-x", bg: "bg-danger-subtle text-danger" },
-      { label: "Attendance Sessions", val: c.attendance_sessions, icon: "bi-check2-square", bg: "bg-secondary-subtle text-secondary" },
+      { label: "Total Students", val: c.students, icon: "users", bg: "bg-primary-subtle text-primary" },
+      { label: "Total Teachers", val: c.teachers, icon: "briefcase", bg: "bg-success-subtle text-success" },
+      { label: "Courses", val: c.courses, icon: "book-open", bg: "bg-info-subtle text-info" },
+      { label: "Subjects", val: c.subjects, icon: "book-marked", bg: "bg-warning-subtle text-warning" },
+      { label: "Pending Leaves", val: c.pending_leaves, icon: "calendar-x", bg: "bg-danger-subtle text-danger" },
+      { label: "Attendance Sessions", val: c.attendance_sessions, icon: "check-square", bg: "bg-secondary-subtle text-secondary" },
     ];
 
     main.innerHTML = `
@@ -278,7 +278,7 @@
           <div class="card panel-card p-3 p-md-4">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h5 class="fw-bold mb-0">Academic Sessions</h5>
-              <button id="add-sess-btn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Session</button>
+              <button id="add-sess-btn" class="btn btn-primary btn-sm"><i data-lucide="plus" class="me-1"></i>Add Session</button>
             </div>
             <div class="table-responsive">
               <table class="table table-hover align-middle">
@@ -299,7 +299,7 @@
           <div class="card panel-card p-3 p-md-4">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h5 class="fw-bold mb-0">Semesters</h5>
-              <button id="add-sem-btn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add Semester</button>
+              <button id="add-sem-btn" class="btn btn-primary btn-sm"><i data-lucide="plus" class="me-1"></i>Add Semester</button>
             </div>
             <div class="table-responsive">
               <table class="table table-hover align-middle">
@@ -931,7 +931,7 @@
       <div class="card panel-card p-3 p-md-4 mb-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
           <h5 class="fw-bold mb-0">Examinations</h5>
-          <button id="add-exam-btn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Create Examination</button>
+          <button id="add-exam-btn" class="btn btn-primary btn-sm"><i data-lucide="plus" class="me-1"></i>Create Examination</button>
         </div>
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
@@ -1216,7 +1216,7 @@
   function loadNotificationsForm() {
     main.innerHTML = `
       <div class="card panel-card p-4" style="max-width: 600px;">
-        <h5 class="fw-bold mb-3"><i class="bi bi-megaphone me-2 text-primary"></i>Broadcast In-App Notice</h5>
+        <h5 class="fw-bold mb-3"><i data-lucide="megaphone" class="me-2 text-primary"></i>Broadcast In-App Notice</h5>
         <form id="notif-form" class="row g-3">
           <div class="col-12"><label class="form-label">Target Audience</label>
             <select id="n-role" class="form-select">

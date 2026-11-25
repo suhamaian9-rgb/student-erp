@@ -14,13 +14,13 @@
   const esc = ERP.escapeHtml;
 
   const navItems = [
-    { id: "overview", label: "Overview", icon: "bi-speedometer2" },
-    { id: "subjects", label: "My Subjects", icon: "bi-journal-bookmark" },
-    { id: "attendance", label: "Attendance", icon: "bi-calendar-check" },
-    { id: "results", label: "Results & Grades", icon: "bi-award" },
-    { id: "leaves", label: "Leave Applications", icon: "bi-calendar-x" },
-    { id: "feedback", label: "Feedback", icon: "bi-chat-left-text" },
-    { id: "profile", label: "My Profile", icon: "bi-person-circle" },
+    { id: "overview", label: "Overview", icon: "layout-dashboard" },
+    { id: "subjects", label: "My Subjects", icon: "book-marked" },
+    { id: "attendance", label: "Attendance", icon: "calendar-check" },
+    { id: "results", label: "Results & Grades", icon: "award" },
+    { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
+    { id: "feedback", label: "Feedback", icon: "message-square" },
+    { id: "profile", label: "My Profile", icon: "user-circle" },
   ];
 
   // 1. OVERVIEW
@@ -32,10 +32,10 @@
     if (signal?.aborted) return;
     const c = stats.counts;
     const cards = [
-      { label: "Attendance %", val: `${c.attendance_percentage}%`, icon: "bi-pie-chart-fill", bg: "bg-primary-subtle text-primary" },
-      { label: "Subjects", val: c.subjects, icon: "bi-journal-text", bg: "bg-success-subtle text-success" },
-      { label: "Graded Exams", val: c.results, icon: "bi-award-fill", bg: "bg-info-subtle text-info" },
-      { label: "Pending Leaves", val: c.pending_leaves, icon: "bi-calendar-x", bg: "bg-warning-subtle text-warning" },
+      { label: "Attendance %", val: `${c.attendance_percentage}%`, icon: "pie-chart", bg: "bg-primary-subtle text-primary" },
+      { label: "Subjects", val: c.subjects, icon: "book-marked", bg: "bg-success-subtle text-success" },
+      { label: "Graded Exams", val: c.results, icon: "award", bg: "bg-info-subtle text-info" },
+      { label: "Pending Leaves", val: c.pending_leaves, icon: "calendar-x", bg: "bg-warning-subtle text-warning" },
     ];
 
     main.innerHTML = `
