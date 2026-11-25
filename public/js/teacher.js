@@ -95,50 +95,25 @@
         </div>
       </div>
 
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">My Students</h5>
-          <input type="search" id="stud-search" class="form-control form-control-sm" style="width:220px" placeholder="Filter students...">
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr><th>Roll No</th><th>Name</th><th>Email</th><th>Course</th><th>Session</th></tr></thead>
-            <tbody id="t-stud-body"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="t-stud-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="t-stud-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
-            <div id="t-stud-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
+      <div id="t-stud-wrap"></div>`;
 
-    let q = "";
-    let page = 1;
-    let pageSize = 25;
-    const draw = () => {
-      const filtered = q ? students.filter((s) => JSON.stringify(s).toLowerCase().includes(q.toLowerCase())) : students;
-      const paged = ERP.paginate(filtered, page, pageSize);
-      document.getElementById("t-stud-body").innerHTML = paged.rows.map((s) => `
-        <tr>
-          <td><span class="badge bg-dark">${esc(s.roll_number)}</span></td>
-          <td><strong>${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</strong></td>
-          <td>${esc(s.profiles?.email)}</td>
-          <td>${esc(s.courses?.name || "—")}</td>
-          <td>${esc(s.academic_sessions?.name || "—")}</td>
-        </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No students found.</td></tr>`;
-      document.getElementById("t-stud-info").textContent = `Showing ${paged.rows.length} of ${paged.total} students (Page ${paged.page}/${paged.totalPages})`;
-      document.getElementById("t-stud-pager").innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="ts-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="ts-next">Next</button>`;
-      document.getElementById("ts-prev").onclick = () => { page--; draw(); };
-      document.getElementById("ts-next").onclick = () => { page++; draw(); };
-    };
-    draw();
-    document.getElementById("t-stud-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; draw(); };
-    document.getElementById("stud-search").oninput = (e) => { q = e.target.value; page = 1; draw(); };
+    ERP.renderDataTable(document.getElementById("t-stud-wrap"), {
+      title: "My Students",
+      searchPlaceholder: "Search students...",
+      rows: students,
+      filters: [
+        { id: "course", label: "Course", getValue: (s) => s.courses?.name },
+        { id: "session", label: "Session", getValue: (s) => s.academic_sessions?.name },
+      ],
+      columns: [
+        { label: "Roll No", sortValue: (s) => s.roll_number || "", render: (s) => `<span class="badge bg-dark">${esc(s.roll_number)}</span>` },
+        { label: "Name", sortValue: (s) => `${s.profiles?.first_name || ""} ${s.profiles?.last_name || ""}`.trim(), render: (s) => `<strong>${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</strong>` },
+        { label: "Email", sortValue: (s) => s.profiles?.email || "", render: (s) => esc(s.profiles?.email) },
+        { label: "Course", sortValue: (s) => s.courses?.name || "", render: (s) => esc(s.courses?.name || "—") },
+        { label: "Session", sortValue: (s) => s.academic_sessions?.name || "", render: (s) => esc(s.academic_sessions?.name || "—") },
+      ],
+      emptyMessage: "No students found.",
+    });
   }
 
   // 3. TAKE ATTENDANCE
@@ -339,62 +314,34 @@
         </form>
       </div>
 
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">Recorded Results</h5>
-          <div class="d-flex gap-2">
-            <input type="search" id="tr-search" class="form-control form-control-sm" style="width: 200px;" placeholder="Filter results...">
-            <button id="tr-export" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Exam</th><th>Marks</th><th>Grade</th></tr></thead>
-            <tbody id="tr-tbody"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="tr-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="tr-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
-            <div id="tr-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
+      <div id="tr-wrap"></div>`;
 
-    let trQuery = "";
-    let trPage = 1;
-    let trPageSize = 25;
-    const drawResults = () => {
-      const q = trQuery.toLowerCase();
-      const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
-      const paged = ERP.paginate(filtered, trPage, trPageSize);
-      document.getElementById("tr-tbody").innerHTML = paged.rows.map((r) => `
-        <tr>
-          <td>${esc(r.students?.roll_number)}</td>
-          <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
-          <td>${esc(r.subjects?.name)}</td>
-          <td>${esc(r.examinations?.name)}</td>
-          <td>${r.marks_obtained} / ${r.max_marks}</td>
-          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-        </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No results recorded yet.</td></tr>`;
-      document.getElementById("tr-info").textContent = `Showing ${paged.rows.length} of ${paged.total} results (Page ${paged.page}/${paged.totalPages})`;
-      document.getElementById("tr-pager").innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="tr-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="tr-next">Next</button>`;
-      document.getElementById("tr-prev").onclick = () => { trPage--; drawResults(); };
-      document.getElementById("tr-next").onclick = () => { trPage++; drawResults(); };
-    };
-    drawResults();
-    document.getElementById("tr-size").onchange = (e) => { trPageSize = Number(e.target.value) || 25; trPage = 1; drawResults(); };
-    document.getElementById("tr-search").oninput = (e) => { trQuery = e.target.value; trPage = 1; drawResults(); };
-    document.getElementById("tr-export").onclick = () => {
-      ERP.exportCsv(
-        "teacher-results.csv",
-        ["Roll No", "Student", "Subject", "Exam", "Marks", "Max Marks", "Grade"],
-        results.map((r) => [r.students?.roll_number, `${r.students?.profiles?.first_name} ${r.students?.profiles?.last_name}`, r.subjects?.name, r.examinations?.name, r.marks_obtained, r.max_marks, r.grade])
-      );
-    };
+    ERP.renderDataTable(document.getElementById("tr-wrap"), {
+      title: "Recorded Results",
+      searchPlaceholder: "Filter results...",
+      rows: results,
+      filters: [
+        { id: "exam", label: "Examination", getValue: (r) => r.examinations?.name },
+        { id: "subject", label: "Subject", getValue: (r) => r.subjects?.name },
+        { id: "grade", label: "Grade", getValue: (r) => r.grade },
+      ],
+      exportFn: (filtered) => {
+        ERP.exportCsv(
+          "teacher-results.csv",
+          ["Roll No", "Student", "Subject", "Exam", "Marks", "Max Marks", "Grade"],
+          filtered.map((r) => [r.students?.roll_number, `${r.students?.profiles?.first_name} ${r.students?.profiles?.last_name}`, r.subjects?.name, r.examinations?.name, r.marks_obtained, r.max_marks, r.grade])
+        );
+      },
+      columns: [
+        { label: "Roll No", sortValue: (r) => r.students?.roll_number || "", render: (r) => esc(r.students?.roll_number) },
+        { label: "Student", sortValue: (r) => `${r.students?.profiles?.first_name || ""} ${r.students?.profiles?.last_name || ""}`.trim(), render: (r) => `${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}` },
+        { label: "Subject", sortValue: (r) => r.subjects?.name || "", render: (r) => esc(r.subjects?.name) },
+        { label: "Exam", sortValue: (r) => r.examinations?.name || "", render: (r) => esc(r.examinations?.name) },
+        { label: "Marks", sortValue: (r) => Number(r.marks_obtained), render: (r) => `${r.marks_obtained} / ${r.max_marks}` },
+        { label: "Grade", sortValue: (r) => r.grade || "", render: (r) => `<span class="badge bg-primary">${esc(r.grade)}</span>` },
+      ],
+      emptyMessage: "No results recorded yet.",
+    });
 
     document.getElementById("r-exam").onchange = (e) => {
       const opt = e.target.selectedOptions[0];

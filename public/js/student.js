@@ -97,38 +97,37 @@
     const runningCount = rows.filter((s) => s.semester_status === "running").length;
     const completedCount = rows.filter((s) => s.semester_status === "completed").length;
     const totalCredits = rows.reduce((sum, s) => sum + (Number(s.credits) || 0), 0);
+    const statusLabel = (st) => (st === "running" ? "Running" : st === "completed" ? "Completed" : "Catalog");
     const statusBadge = (st) => {
       if (st === "running") return '<span class="badge bg-success">Running</span>';
       if (st === "completed") return '<span class="badge bg-secondary">Completed</span>';
       return '<span class="badge bg-light text-dark border">Catalog</span>';
     };
-    main.innerHTML = `
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">Enrolled Course Subjects</h5>
-          <div class="d-flex flex-wrap gap-2 small">
-            <span class="badge bg-success-subtle text-success">Running: ${runningCount}</span>
-            <span class="badge bg-secondary-subtle text-secondary">Completed: ${completedCount}</span>
-            <span class="badge bg-primary-subtle text-primary">Total Credits: ${totalCredits}</span>
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Code</th><th>Subject</th><th>Semester</th><th>Status</th><th>Credits</th><th>Instructor</th></tr></thead>
-            <tbody>
-              ${rows.map((s) => `
-                <tr>
-                  <td><span class="badge bg-primary">${esc(s.code)}</span></td>
-                  <td><strong>${esc(s.name)}</strong></td>
-                  <td>${esc(s.semesters?.name || "—")}</td>
-                  <td>${statusBadge(s.semester_status)}</td>
-                  <td>${s.credits}</td>
-                  <td>${s.teachers?.profiles ? esc(`${s.teachers.profiles.first_name} ${s.teachers.profiles.last_name}`) : "TBA"}</td>
-                </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No subjects found for your course.</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
+    ERP.renderDataTable(main, {
+      title: "Enrolled Course Subjects",
+      headerMetaHtml: `
+        <div class="d-flex flex-wrap gap-2 small">
+          <span class="badge bg-success-subtle text-success">Running: ${runningCount}</span>
+          <span class="badge bg-secondary-subtle text-secondary">Completed: ${completedCount}</span>
+          <span class="badge bg-primary-subtle text-primary">Total Credits: ${totalCredits}</span>
+        </div>`,
+      searchPlaceholder: "Search subjects...",
+      rows,
+      defaultPageSize: 50,
+      filters: [
+        { id: "semester", label: "Semester", getValue: (s) => s.semesters?.name },
+        { id: "status", label: "Status", getValue: (s) => statusLabel(s.semester_status) },
+      ],
+      columns: [
+        { label: "Code", sortValue: (s) => s.code || "", render: (s) => `<span class="badge bg-primary">${esc(s.code)}</span>` },
+        { label: "Subject", sortValue: (s) => s.name || "", render: (s) => `<strong>${esc(s.name)}</strong>` },
+        { label: "Semester", sortValue: (s) => s.semesters?.semester_number ?? s.semesters?.name ?? "", render: (s) => esc(s.semesters?.name || "—") },
+        { label: "Status", sortValue: (s) => statusLabel(s.semester_status), render: (s) => statusBadge(s.semester_status) },
+        { label: "Credits", sortValue: (s) => Number(s.credits) || 0, render: (s) => s.credits },
+        { label: "Instructor", sortValue: (s) => s.teachers?.profiles ? `${s.teachers.profiles.first_name} ${s.teachers.profiles.last_name}` : "TBA", render: (s) => s.teachers?.profiles ? esc(`${s.teachers.profiles.first_name} ${s.teachers.profiles.last_name}`) : "TBA" },
+      ],
+      emptyMessage: "No subjects found for your course.",
+    });
   }
 
   // 3. ATTENDANCE HISTORY
@@ -154,110 +153,62 @@
         </div>
       </div>
 
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">Attendance History</h5>
-          <button id="exp-att" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</button>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr><th>Date</th><th>Subject</th><th>Topic</th><th>Status</th><th>Remarks</th></tr></thead>
-            <tbody id="s-att-body"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="s-att-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="sa-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
-            <div id="s-att-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
+      <div id="s-att-wrap"></div>`;
 
-    let page = 1;
-    let pageSize = 25;
-    const drawAtt = () => {
-      const paged = ERP.paginate(data.records, page, pageSize);
-      document.getElementById("s-att-body").innerHTML = paged.rows.map((r) => `
-        <tr>
-          <td>${esc(r.attendance_sessions?.attendance_date)}</td>
-          <td>${esc(r.attendance_sessions?.subjects?.name)}</td>
-          <td>${esc(r.attendance_sessions?.topic || "—")}</td>
-          <td>${ERP.statusBadge(r.status)}</td>
-          <td>${esc(r.remarks || "—")}</td>
-        </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No attendance history yet.</td></tr>`;
-      document.getElementById("s-att-info").textContent = `Showing ${paged.rows.length} of ${paged.total} records (Page ${paged.page}/${paged.totalPages})`;
-      document.getElementById("s-att-pager").innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="sa-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="sa-next">Next</button>`;
-      document.getElementById("sa-prev").onclick = () => { page--; drawAtt(); };
-      document.getElementById("sa-next").onclick = () => { page++; drawAtt(); };
-    };
-    drawAtt();
-    document.getElementById("sa-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; drawAtt(); };
-
-    document.getElementById("exp-att").onclick = () => {
-      ERP.exportCsv(
-        "my-attendance.csv",
-        ["Date", "Subject", "Topic", "Status", "Remarks"],
-        data.records.map((r) => [r.attendance_sessions?.attendance_date, r.attendance_sessions?.subjects?.name, r.attendance_sessions?.topic, r.status, r.remarks])
-      );
-    };
+    ERP.renderDataTable(document.getElementById("s-att-wrap"), {
+      title: "Attendance History",
+      searchPlaceholder: "Search attendance...",
+      rows: data.records,
+      filters: [
+        { id: "subject", label: "Subject", getValue: (r) => r.attendance_sessions?.subjects?.name },
+        { id: "status", label: "Status", getValue: (r) => r.status },
+      ],
+      exportFn: (filtered) => {
+        ERP.exportCsv(
+          "my-attendance.csv",
+          ["Date", "Subject", "Topic", "Status", "Remarks"],
+          filtered.map((r) => [r.attendance_sessions?.attendance_date, r.attendance_sessions?.subjects?.name, r.attendance_sessions?.topic, r.status, r.remarks])
+        );
+      },
+      columns: [
+        { label: "Date", sortValue: (r) => r.attendance_sessions?.attendance_date || "", render: (r) => esc(r.attendance_sessions?.attendance_date) },
+        { label: "Subject", sortValue: (r) => r.attendance_sessions?.subjects?.name || "", render: (r) => esc(r.attendance_sessions?.subjects?.name) },
+        { label: "Topic", sortValue: (r) => r.attendance_sessions?.topic || "", render: (r) => esc(r.attendance_sessions?.topic || "—") },
+        { label: "Status", sortValue: (r) => r.status || "", render: (r) => ERP.statusBadge(r.status) },
+        { label: "Remarks", render: (r) => esc(r.remarks || "—") },
+      ],
+      emptyMessage: "No attendance history yet.",
+    });
   }
 
   // 4. RESULTS
   async function loadResults(signal) {
     const rows = await ERP.cachedApi("/api/student/results", { signal });
-    main.innerHTML = `
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">Examination Results</h5>
-          <button id="exp-res" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</button>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr><th>Examination</th><th>Type</th><th>Subject</th><th>Marks</th><th>Grade</th></tr></thead>
-            <tbody id="s-res-body"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="s-res-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="sr-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
-            <div id="s-res-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
-
-    let page = 1;
-    let pageSize = 25;
-    const drawRes = () => {
-      const paged = ERP.paginate(rows, page, pageSize);
-      document.getElementById("s-res-body").innerHTML = paged.rows.map((r) => `
-        <tr>
-          <td><strong>${esc(r.examinations?.name)}</strong></td>
-          <td><span class="badge bg-secondary text-uppercase">${esc(r.examinations?.exam_type)}</span></td>
-          <td>${esc(r.subjects?.name)} (${esc(r.subjects?.code)})</td>
-          <td>${r.marks_obtained} / ${r.max_marks}</td>
-          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-        </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No results published yet.</td></tr>`;
-      document.getElementById("s-res-info").textContent = `Showing ${paged.rows.length} of ${paged.total} results (Page ${paged.page}/${paged.totalPages})`;
-      document.getElementById("s-res-pager").innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="sr-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="sr-next">Next</button>`;
-      document.getElementById("sr-prev").onclick = () => { page--; drawRes(); };
-      document.getElementById("sr-next").onclick = () => { page++; drawRes(); };
-    };
-    drawRes();
-    document.getElementById("sr-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; drawRes(); };
-
-    document.getElementById("exp-res").onclick = () => {
-      ERP.exportCsv(
-        "my-results.csv",
-        ["Examination", "Subject", "Marks", "Max Marks", "Grade"],
-        rows.map((r) => [r.examinations?.name, r.subjects?.name, r.marks_obtained, r.max_marks, r.grade])
-      );
-    };
+    ERP.renderDataTable(main, {
+      title: "Examination Results",
+      searchPlaceholder: "Search results...",
+      rows,
+      filters: [
+        { id: "exam", label: "Examination", getValue: (r) => r.examinations?.name },
+        { id: "subject", label: "Subject", getValue: (r) => r.subjects?.name },
+        { id: "grade", label: "Grade", getValue: (r) => r.grade },
+      ],
+      exportFn: (filtered) => {
+        ERP.exportCsv(
+          "my-results.csv",
+          ["Examination", "Subject", "Marks", "Max Marks", "Grade"],
+          filtered.map((r) => [r.examinations?.name, r.subjects?.name, r.marks_obtained, r.max_marks, r.grade])
+        );
+      },
+      columns: [
+        { label: "Examination", sortValue: (r) => r.examinations?.name || "", render: (r) => `<strong>${esc(r.examinations?.name)}</strong>` },
+        { label: "Type", sortValue: (r) => r.examinations?.exam_type || "", render: (r) => `<span class="badge bg-secondary text-uppercase">${esc(r.examinations?.exam_type)}</span>` },
+        { label: "Subject", sortValue: (r) => r.subjects?.name || "", render: (r) => `${esc(r.subjects?.name)} (${esc(r.subjects?.code)})` },
+        { label: "Marks", sortValue: (r) => Number(r.marks_obtained), render: (r) => `${r.marks_obtained} / ${r.max_marks}` },
+        { label: "Grade", sortValue: (r) => r.grade || "", render: (r) => `<span class="badge bg-primary">${esc(r.grade)}</span>` },
+      ],
+      emptyMessage: "No results published yet.",
+    });
   }
 
   // 5. LEAVES

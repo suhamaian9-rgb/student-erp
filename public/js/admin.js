@@ -40,87 +40,8 @@
     modal.show();
   }
 
-  function renderTableWithSearch({ title, addLabel, onAdd, exportFn, columns, rows, onAction, searchPlaceholder = "Search...", defaultPageSize = 25 }) {
-    let query = "";
-    let page = 1;
-    let pageSize = defaultPageSize;
-
-    main.innerHTML = `
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">${esc(title)}</h5>
-          <div class="d-flex flex-wrap gap-2">
-            <input type="search" id="tbl-search" class="form-control form-control-sm" style="width: 220px;" placeholder="${esc(searchPlaceholder)}">
-            ${exportFn ? `<button id="tbl-export" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>` : ""}
-            ${addLabel ? `<button id="tbl-add" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>${esc(addLabel)}</button>` : ""}
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr>${columns.map((c) => `<th>${esc(c.label)}</th>`).join("")}</tr></thead>
-            <tbody id="tbl-body"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="tbl-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="tbl-page-size" class="form-select form-select-sm" style="width: auto;" aria-label="Rows per page">
-              ${ERP.pageSizeOptions(pageSize, [10, 25, 50, 100, 250])}
-            </select>
-            <div id="tbl-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
-
-    if (onAdd) document.getElementById("tbl-add").onclick = onAdd;
-    if (exportFn) document.getElementById("tbl-export").onclick = () => exportFn(getFiltered());
-
-    const tbody = document.getElementById("tbl-body");
-    if (onAction) {
-      tbody.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (btn && tbody.contains(btn)) onAction(btn);
-      });
-    }
-
-    function getFiltered() {
-      if (!query) return rows;
-      const q = query.toLowerCase();
-      return rows.filter((r) => JSON.stringify(r).toLowerCase().includes(q));
-    }
-
-    function draw() {
-      const filtered = getFiltered();
-      const paged = ERP.paginate(filtered, page, pageSize);
-      if (paged.rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${columns.length}" class="text-center text-muted py-4">No records found</td></tr>`;
-      } else {
-        tbody.innerHTML = paged.rows
-          .map((row) => `<tr>${columns.map((c) => `<td>${c.render(row)}</td>`).join("")}</tr>`)
-          .join("");
-      }
-      document.getElementById("tbl-info").textContent = `Showing ${paged.rows.length} of ${paged.total} records (Page ${paged.page}/${paged.totalPages})`;
-      const pager = document.getElementById("tbl-pager");
-      pager.innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="pg-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="pg-next">Next</button>`;
-      document.getElementById("pg-prev").onclick = () => { page--; draw(); };
-      document.getElementById("pg-next").onclick = () => { page++; draw(); };
-    }
-
-    document.getElementById("tbl-page-size").addEventListener("change", (e) => {
-      pageSize = Number(e.target.value) || 25;
-      page = 1;
-      draw();
-    });
-
-    document.getElementById("tbl-search").addEventListener("input", (e) => {
-      query = e.target.value;
-      page = 1;
-      draw();
-    });
-
-    draw();
+  function renderTableWithSearch(opts) {
+    ERP.renderDataTable(main, opts);
   }
 
   // 1. OVERVIEW
@@ -235,8 +156,8 @@
       onAdd: () => showForm(),
       rows,
       columns: [
-        { label: "Code", render: (r) => `<span class="badge bg-secondary">${esc(r.code)}</span>` },
-        { label: "Name", render: (r) => `<strong>${esc(r.name)}</strong>` },
+        { label: "Code", sortValue: (r) => r.code || "", render: (r) => `<span class="badge bg-secondary">${esc(r.code)}</span>` },
+        { label: "Name", sortValue: (r) => r.name || "", render: (r) => `<strong>${esc(r.name)}</strong>` },
         { label: "Description", render: (r) => esc(r.description || "—") },
         {
           label: "Actions",
@@ -309,11 +230,14 @@
       addLabel: "Add Course",
       onAdd: () => showForm(),
       rows,
+      filters: [
+        { id: "department", label: "Department", getValue: (r) => r.departments?.name },
+      ],
       columns: [
-        { label: "Code", render: (r) => `<span class="badge bg-primary">${esc(r.code)}</span>` },
-        { label: "Course Name", render: (r) => `<strong>${esc(r.name)}</strong>` },
-        { label: "Department", render: (r) => esc(r.departments?.name || "—") },
-        { label: "Duration", render: (r) => `${r.duration_years} yrs` },
+        { label: "Code", sortValue: (r) => r.code || "", render: (r) => `<span class="badge bg-primary">${esc(r.code)}</span>` },
+        { label: "Course Name", sortValue: (r) => r.name || "", render: (r) => `<strong>${esc(r.name)}</strong>` },
+        { label: "Department", sortValue: (r) => r.departments?.name || "", render: (r) => esc(r.departments?.name || "—") },
+        { label: "Duration", sortValue: (r) => Number(r.duration_years) || 0, render: (r) => `${r.duration_years} yrs` },
         {
           label: "Actions",
           render: (r) => `
@@ -533,12 +457,17 @@
       addLabel: "Add Subject",
       onAdd: () => showForm(),
       rows,
+      filters: [
+        { id: "course", label: "Course", getValue: (r) => r.courses?.name },
+        { id: "semester", label: "Semester", getValue: (r) => r.semesters?.name },
+        { id: "credits", label: "Credits", getValue: (r) => (r.credits != null ? `${r.credits} Credits` : "") },
+      ],
       columns: [
-        { label: "Code", render: (r) => `<span class="badge bg-info text-dark">${esc(r.code)}</span>` },
-        { label: "Subject Name", render: (r) => `<strong>${esc(r.name)}</strong>` },
-        { label: "Course", render: (r) => esc(r.courses?.name || "—") },
-        { label: "Teacher", render: (r) => r.teachers?.profiles ? esc(`${r.teachers.profiles.first_name} ${r.teachers.profiles.last_name}`) : "Unassigned" },
-        { label: "Credits", render: (r) => r.credits },
+        { label: "Code", sortValue: (r) => r.code || "", render: (r) => `<span class="badge bg-info text-dark">${esc(r.code)}</span>` },
+        { label: "Subject Name", sortValue: (r) => r.name || "", render: (r) => `<strong>${esc(r.name)}</strong>` },
+        { label: "Course", sortValue: (r) => r.courses?.name || "", render: (r) => esc(r.courses?.name || "—") },
+        { label: "Teacher", sortValue: (r) => r.teachers?.profiles ? `${r.teachers.profiles.first_name} ${r.teachers.profiles.last_name}` : "Unassigned", render: (r) => r.teachers?.profiles ? esc(`${r.teachers.profiles.first_name} ${r.teachers.profiles.last_name}`) : "Unassigned" },
+        { label: "Credits", sortValue: (r) => Number(r.credits) || 0, render: (r) => r.credits },
         {
           label: "Actions",
           render: (r) => `
@@ -614,6 +543,11 @@
       title: "Subject Enrollments",
       addLabel: "Enroll Student",
       onAdd: showForm,
+      filters: [
+        { id: "batch", label: "Batch", getValue: (r) => r.students?.academic_sessions?.name },
+        { id: "semester", label: "Semester", getValue: (r) => r.semesters?.name },
+        { id: "status", label: "Status", getValue: (r) => (r.semesters ? (r.semesters.is_current ? "Running" : "Completed") : "") },
+      ],
       exportFn: (filtered) => {
         ERP.exportCsv(
           "enrollments.csv",
@@ -631,13 +565,14 @@
       },
       rows,
       columns: [
-        { label: "Roll No", render: (r) => `<span class="badge bg-dark">${esc(r.students?.roll_number || "—")}</span>` },
-        { label: "Student", render: (r) => `<strong>${esc(r.students?.profiles?.first_name || "")} ${esc(r.students?.profiles?.last_name || "")}</strong>` },
-        { label: "Batch", render: (r) => esc(r.students?.academic_sessions?.name || "—") },
-        { label: "Subject", render: (r) => `<span class="badge bg-info text-dark me-1">${esc(r.subjects?.code || "")}</span>${esc(r.subjects?.name || "—")}` },
-        { label: "Semester", render: (r) => esc(r.semesters?.name || "—") },
+        { label: "Roll No", sortValue: (r) => r.students?.roll_number || "", render: (r) => `<span class="badge bg-dark">${esc(r.students?.roll_number || "—")}</span>` },
+        { label: "Student", sortValue: (r) => `${r.students?.profiles?.first_name || ""} ${r.students?.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.students?.profiles?.first_name || "")} ${esc(r.students?.profiles?.last_name || "")}</strong>` },
+        { label: "Batch", sortValue: (r) => r.students?.academic_sessions?.name || "", render: (r) => esc(r.students?.academic_sessions?.name || "—") },
+        { label: "Subject", sortValue: (r) => `${r.subjects?.code || ""} ${r.subjects?.name || ""}`.trim(), render: (r) => `<span class="badge bg-info text-dark me-1">${esc(r.subjects?.code || "")}</span>${esc(r.subjects?.name || "—")}` },
+        { label: "Semester", sortValue: (r) => r.semesters?.semester_number ?? r.semesters?.name ?? "", render: (r) => esc(r.semesters?.name || "—") },
         {
           label: "Status",
+          sortValue: (r) => (r.semesters ? (r.semesters.is_current ? "Running" : "Completed") : ""),
           render: (r) => {
             if (!r.semesters) return "—";
             return r.semesters.is_current
@@ -723,12 +658,15 @@
       addLabel: "Add Teacher",
       onAdd: () => showForm(),
       rows,
+      filters: [
+        { id: "department", label: "Department", getValue: (r) => r.departments?.name },
+      ],
       columns: [
-        { label: "Emp ID", render: (r) => `<span class="badge bg-secondary">${esc(r.employee_id)}</span>` },
-        { label: "Name", render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
-        { label: "Email", render: (r) => esc(r.profiles?.email) },
-        { label: "Department", render: (r) => esc(r.departments?.name || "—") },
-        { label: "Qualification", render: (r) => esc(r.qualification || "—") },
+        { label: "Emp ID", sortValue: (r) => r.employee_id || "", render: (r) => `<span class="badge bg-secondary">${esc(r.employee_id)}</span>` },
+        { label: "Name", sortValue: (r) => `${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
+        { label: "Email", sortValue: (r) => r.profiles?.email || "", render: (r) => esc(r.profiles?.email) },
+        { label: "Department", sortValue: (r) => r.departments?.name || "", render: (r) => esc(r.departments?.name || "—") },
+        { label: "Qualification", sortValue: (r) => r.qualification || "", render: (r) => esc(r.qualification || "—") },
         {
           label: "Actions",
           render: (r) => `
@@ -813,20 +751,26 @@
       title: "Students",
       addLabel: "Add Student",
       onAdd: () => showForm(),
+      filters: [
+        { id: "course", label: "Course", getValue: (r) => r.courses?.name },
+        { id: "session", label: "Session", getValue: (r) => r.academic_sessions?.name },
+        { id: "semester", label: "Semester", getValue: (r) => r.semesters?.name },
+      ],
       exportFn: (filtered) => {
         ERP.exportCsv(
           "students.csv",
-          ["Roll Number", "First Name", "Last Name", "Email", "Course", "Session"],
-          filtered.map((r) => [r.roll_number, r.profiles?.first_name, r.profiles?.last_name, r.profiles?.email, r.courses?.name, r.academic_sessions?.name])
+          ["Roll Number", "First Name", "Last Name", "Email", "Course", "Session", "Semester"],
+          filtered.map((r) => [r.roll_number, r.profiles?.first_name, r.profiles?.last_name, r.profiles?.email, r.courses?.name, r.academic_sessions?.name, r.semesters?.name || ""])
         );
       },
       rows,
       columns: [
-        { label: "Roll No", render: (r) => `<span class="badge bg-dark">${esc(r.roll_number)}</span>` },
-        { label: "Name", render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
-        { label: "Email", render: (r) => esc(r.profiles?.email) },
-        { label: "Course", render: (r) => esc(r.courses?.name || "—") },
-        { label: "Session", render: (r) => esc(r.academic_sessions?.name || "—") },
+        { label: "Roll No", sortValue: (r) => r.roll_number || "", render: (r) => `<span class="badge bg-dark">${esc(r.roll_number)}</span>` },
+        { label: "Name", sortValue: (r) => `${r.profiles?.first_name || ""} ${r.profiles?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.profiles?.first_name)} ${esc(r.profiles?.last_name)}</strong>` },
+        { label: "Email", sortValue: (r) => r.profiles?.email || "", render: (r) => esc(r.profiles?.email) },
+        { label: "Course", sortValue: (r) => r.courses?.name || "", render: (r) => esc(r.courses?.name || "—") },
+        { label: "Session", sortValue: (r) => r.academic_sessions?.name || "", render: (r) => esc(r.academic_sessions?.name || "—") },
+        { label: "Semester", sortValue: (r) => r.semesters?.name || "", render: (r) => esc(r.semesters?.name || "—") },
         {
           label: "Actions",
           render: (r) => `
@@ -853,18 +797,30 @@
 
   // 8. ATTENDANCE VIEW (lazy incremental session rendering)
   async function loadAttendance(signal) {
-    const [sessionsList, subjects] = await Promise.all([
+    const [sessionsList, subjects, academicSessions] = await Promise.all([
       ERP.cachedApi("/api/admin/attendance", { signal }),
       ERP.cachedApi("/api/admin/subjects", { signal }),
+      ERP.cachedApi("/api/admin/sessions", { signal }),
     ]);
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <h5 class="fw-bold mb-0">Attendance Records</h5>
-          <div class="d-flex gap-2">
-            <select id="att-sub-filter" class="form-select form-select-sm" style="width: 220px;">
+          <div class="d-flex flex-wrap gap-2">
+            <input type="search" id="att-search" class="form-control form-control-sm" style="width: 190px;" placeholder="Search topic, teacher, roll...">
+            <select id="att-sub-filter" class="form-select form-select-sm" style="width: 200px;">
               <option value="">All Subjects</option>
               ${subjects.map((s) => `<option value="${s.id}">${esc(s.name)} (${esc(s.code)})</option>`).join("")}
+            </select>
+            <select id="att-sess-filter" class="form-select form-select-sm" style="width: 160px;">
+              <option value="">All Sessions</option>
+              ${academicSessions.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}
+            </select>
+            <select id="att-sort" class="form-select form-select-sm" style="width: 185px;">
+              <option value="date:desc">Sort: Newest Date</option>
+              <option value="date:asc">Sort: Oldest Date</option>
+              <option value="pct:desc">Sort: Attendance % (High-Low)</option>
+              <option value="pct:asc">Sort: Attendance % (Low-High)</option>
             </select>
           </div>
         </div>
@@ -931,12 +887,36 @@
       renderNextBatch();
     };
 
-    drawList(sessionsList);
+    let currentAttItems = sessionsList;
+    const pctOf = (s) => {
+      const recs = s.attendance_records || [];
+      if (recs.length === 0) return -1;
+      const present = recs.filter((r) => r.status === "present" || r.status === "late").length;
+      return present / recs.length;
+    };
+    const applyAttControls = () => {
+      const q = document.getElementById("att-search").value.trim().toLowerCase();
+      const sessId = document.getElementById("att-sess-filter").value;
+      const sortVal = document.getElementById("att-sort").value;
+      let list = currentAttItems;
+      if (sessId) list = list.filter((s) => String(s.session_id || s.academic_sessions?.id || "") === sessId);
+      if (q) list = list.filter((s) => JSON.stringify(s).toLowerCase().includes(q));
+      if (sortVal === "date:asc") list = ERP.sortRows(list, (s) => s.attendance_date || "", "asc");
+      else if (sortVal === "date:desc") list = ERP.sortRows(list, (s) => s.attendance_date || "", "desc");
+      else if (sortVal === "pct:desc") list = ERP.sortRows(list, pctOf, "desc");
+      else if (sortVal === "pct:asc") list = ERP.sortRows(list, pctOf, "asc");
+      drawList(list);
+    };
+
+    applyAttControls();
     document.getElementById("att-sub-filter").onchange = async (e) => {
       const sid = e.target.value;
-      const filtered = await ERP.cachedApi(sid ? `/api/admin/attendance?subject_id=${sid}` : "/api/admin/attendance", { signal });
-      drawList(filtered);
+      currentAttItems = await ERP.cachedApi(sid ? `/api/admin/attendance?subject_id=${sid}` : "/api/admin/attendance", { signal });
+      applyAttControls();
     };
+    document.getElementById("att-sess-filter").onchange = applyAttControls;
+    document.getElementById("att-sort").onchange = applyAttControls;
+    document.getElementById("att-search").oninput = applyAttControls;
   }
 
   // 9. EXAMS & RESULTS
@@ -974,76 +954,59 @@
         </div>
       </div>
 
-      <div class="card panel-card p-3 p-md-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-          <h5 class="fw-bold mb-0">Published Results</h5>
-          <div class="d-flex flex-wrap gap-2">
-            <input type="search" id="res-search" class="form-control form-control-sm" style="width: 210px;" placeholder="Filter results...">
-            <button id="export-res-btn" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</button>
-            <button id="add-res-btn" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Enter Result</button>
-          </div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover align-middle mb-2">
-            <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Exam</th><th>Marks</th><th>Grade</th><th>Actions</th></tr></thead>
-            <tbody id="res-tbody"></tbody>
-          </table>
-        </div>
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
-          <small id="res-info" class="text-muted"></small>
-          <div class="d-flex align-items-center gap-2">
-            <select id="res-page-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
-            <div id="res-pager" class="btn-group btn-group-sm"></div>
-          </div>
-        </div>
-      </div>`;
+      <div id="admin-res-wrap"></div>`;
 
-    let resQuery = "";
-    let resPage = 1;
-    let resPageSize = 25;
-    const drawResults = () => {
-      const q = resQuery.toLowerCase();
-      const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
-      const paged = ERP.paginate(filtered, resPage, resPageSize);
-      document.getElementById("res-tbody").innerHTML = paged.rows.map((r) => `
-        <tr>
-          <td>${esc(r.students?.roll_number)}</td>
-          <td>${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</td>
-          <td>${esc(r.subjects?.name)}</td>
-          <td>${esc(r.examinations?.name)}</td>
-          <td>${r.marks_obtained} / ${r.max_marks}</td>
-          <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
-          <td>
+    ERP.renderDataTable(document.getElementById("admin-res-wrap"), {
+      title: "Published Results",
+      addLabel: "Enter Result",
+      onAdd: () => openResultModal(),
+      searchPlaceholder: "Filter results...",
+      rows: results,
+      filters: [
+        { id: "exam", label: "Examination", getValue: (r) => r.examinations?.name },
+        { id: "subject", label: "Subject", getValue: (r) => r.subjects?.name },
+        { id: "grade", label: "Grade", getValue: (r) => r.grade },
+      ],
+      exportFn: (filtered) => {
+        ERP.exportCsv(
+          "results.csv",
+          ["Roll No", "Student", "Subject", "Examination", "Marks", "Max Marks", "Grade"],
+          filtered.map((r) => [r.students?.roll_number, `${r.students?.profiles?.first_name} ${r.students?.profiles?.last_name}`, r.subjects?.name, r.examinations?.name, r.marks_obtained, r.max_marks, r.grade])
+        );
+      },
+      columns: [
+        { label: "Roll No", sortValue: (r) => r.students?.roll_number || "", render: (r) => esc(r.students?.roll_number) },
+        { label: "Student", sortValue: (r) => `${r.students?.profiles?.first_name || ""} ${r.students?.profiles?.last_name || ""}`.trim(), render: (r) => `${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}` },
+        { label: "Subject", sortValue: (r) => r.subjects?.name || "", render: (r) => esc(r.subjects?.name) },
+        { label: "Exam", sortValue: (r) => r.examinations?.name || "", render: (r) => esc(r.examinations?.name) },
+        { label: "Marks", sortValue: (r) => Number(r.marks_obtained), render: (r) => `${r.marks_obtained} / ${r.max_marks}` },
+        { label: "Grade", sortValue: (r) => r.grade || "", render: (r) => `<span class="badge bg-primary">${esc(r.grade)}</span>` },
+        {
+          label: "Actions",
+          render: (r) => `
             <button class="btn btn-sm btn-outline-primary me-1" data-edit-res="${r.id}">Edit</button>
-            <button class="btn btn-sm btn-outline-danger" data-del-res="${r.id}">Delete</button>
-          </td>
-        </tr>`).join("") || `<tr><td colspan="7" class="text-center text-muted">No results entered yet</td></tr>`;
-      document.getElementById("res-info").textContent = `Showing ${paged.rows.length} of ${paged.total} records (Page ${paged.page}/${paged.totalPages})`;
-      document.getElementById("res-pager").innerHTML = `
-        <button class="btn btn-outline-secondary" ${paged.page <= 1 ? "disabled" : ""} id="res-prev">Prev</button>
-        <button class="btn btn-outline-secondary" ${paged.page >= paged.totalPages ? "disabled" : ""} id="res-next">Next</button>`;
-      document.getElementById("res-prev").onclick = () => { resPage--; drawResults(); };
-      document.getElementById("res-next").onclick = () => { resPage++; drawResults(); };
-
-      main.querySelectorAll("[data-edit-res]").forEach((b) => (b.onclick = () => openResultModal(results.find((x) => x.id == b.dataset.editRes))));
-      main.querySelectorAll("[data-del-res]").forEach((b) => (b.onclick = async () => {
-        const item = results.find((x) => x.id == b.dataset.delRes);
-        const ok = await ERP.confirmAction({
-          title: "Delete Examination Result",
-          message: "Are you sure you want to delete this examination result?",
-          detail: item ? `${item.students?.roll_number || ""} — ${item.subjects?.name || ""} (${item.examinations?.name || ""})` : "",
-        });
-        if (!ok) return;
-        try {
-          await ERP.api(`/api/admin/results?id=${b.dataset.delRes}`, { method: "DELETE" });
-          ERP.showToast("Result deleted");
-          loadResults();
-        } catch (err) { ERP.showToast(err.message, "danger"); }
-      }));
-    };
-    drawResults();
-    document.getElementById("res-page-size").onchange = (e) => { resPageSize = Number(e.target.value) || 25; resPage = 1; drawResults(); };
-    document.getElementById("res-search").oninput = (e) => { resQuery = e.target.value; resPage = 1; drawResults(); };
+            <button class="btn btn-sm btn-outline-danger" data-del-res="${r.id}">Delete</button>`,
+        },
+      ],
+      onAction: async (b) => {
+        if (b.dataset.editRes) return openResultModal(results.find((x) => x.id == b.dataset.editRes));
+        if (b.dataset.delRes) {
+          const item = results.find((x) => x.id == b.dataset.delRes);
+          const ok = await ERP.confirmAction({
+            title: "Delete Examination Result",
+            message: "Are you sure you want to delete this examination result?",
+            detail: item ? `${item.students?.roll_number || ""} — ${item.subjects?.name || ""} (${item.examinations?.name || ""})` : "",
+          });
+          if (!ok) return;
+          try {
+            await ERP.api(`/api/admin/results?id=${b.dataset.delRes}`, { method: "DELETE" });
+            ERP.showToast("Result deleted");
+            loadResults();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
+      emptyMessage: "No results entered yet",
+    });
 
     const openExamModal = (item = null) => {
       openModal(item ? "Edit Examination" : "Create Examination", `
@@ -1125,15 +1088,6 @@
     };
 
     document.getElementById("add-exam-btn").onclick = () => openExamModal();
-    document.getElementById("add-res-btn").onclick = () => openResultModal();
-
-    document.getElementById("export-res-btn").onclick = () => {
-      ERP.exportCsv(
-        "results.csv",
-        ["Roll No", "Student", "Subject", "Examination", "Marks", "Max Marks", "Grade"],
-        results.map((r) => [r.students?.roll_number, `${r.students?.profiles?.first_name} ${r.students?.profiles?.last_name}`, r.subjects?.name, r.examinations?.name, r.marks_obtained, r.max_marks, r.grade])
-      );
-    };
 
     main.querySelectorAll("[data-edit-exam]").forEach((b) => (b.onclick = () => openExamModal(exams.find((x) => x.id == b.dataset.editExam))));
     main.querySelectorAll("[data-del-exam]").forEach((b) => (b.onclick = async () => {
@@ -1155,11 +1109,15 @@
     renderTableWithSearch({
       title: "Leave Applications",
       rows,
+      filters: [
+        { id: "role", label: "Role", getValue: (r) => r.applicant_role },
+        { id: "status", label: "Status", getValue: (r) => r.status },
+      ],
       columns: [
-        { label: "Applicant", render: (r) => `<strong>${esc(r.applicant?.first_name)} ${esc(r.applicant?.last_name)}</strong><br><small class="text-muted">${esc(r.applicant_role)}</small>` },
-        { label: "Dates", render: (r) => `${esc(r.start_date)} to ${esc(r.end_date)}` },
+        { label: "Applicant", sortValue: (r) => `${r.applicant?.first_name || ""} ${r.applicant?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.applicant?.first_name)} ${esc(r.applicant?.last_name)}</strong><br><small class="text-muted">${esc(r.applicant_role)}</small>` },
+        { label: "Dates", sortValue: (r) => r.start_date || "", render: (r) => `${esc(r.start_date)} to ${esc(r.end_date)}` },
         { label: "Reason", render: (r) => esc(r.reason) },
-        { label: "Status", render: (r) => ERP.statusBadge(r.status) },
+        { label: "Status", sortValue: (r) => r.status || "", render: (r) => ERP.statusBadge(r.status) },
         {
           label: "Action",
           render: (r) =>
@@ -1190,9 +1148,13 @@
     renderTableWithSearch({
       title: "Student & Teacher Feedback",
       rows,
+      filters: [
+        { id: "role", label: "Role", getValue: (r) => r.sender_role },
+        { id: "replied", label: "Reply Status", getValue: (r) => (r.reply ? "Replied" : "Pending Reply") },
+      ],
       columns: [
-        { label: "Sender", render: (r) => `<strong>${esc(r.sender?.first_name)} ${esc(r.sender?.last_name)}</strong><br><small class="text-muted">${esc(r.sender_role)}</small>` },
-        { label: "Subject", render: (r) => esc(r.subject) },
+        { label: "Sender", sortValue: (r) => `${r.sender?.first_name || ""} ${r.sender?.last_name || ""}`.trim(), render: (r) => `<strong>${esc(r.sender?.first_name)} ${esc(r.sender?.last_name)}</strong><br><small class="text-muted">${esc(r.sender_role)}</small>` },
+        { label: "Subject", sortValue: (r) => r.subject || "", render: (r) => esc(r.subject) },
         { label: "Message", render: (r) => esc(r.message) },
         { label: "Reply", render: (r) => r.reply ? `<span class="text-success">${esc(r.reply)}</span>` : `<span class="text-muted">No reply yet</span>` },
         { label: "Action", render: (r) => `<button class="btn btn-sm btn-outline-primary" data-fb="${r.id}">Reply</button>` },
