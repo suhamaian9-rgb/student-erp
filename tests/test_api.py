@@ -63,6 +63,10 @@ class _FakeTable:
         self._rows = self._rows[:n]
         return self
 
+    def range(self, start, end):
+        self._rows = self._rows[start:end + 1]
+        return self
+
     def single(self):
         self._single = True
         return self
@@ -306,3 +310,50 @@ def test_compute_grade_boundaries():
     assert compute_grade(42, 100) == "D"
     assert compute_grade(25, 100) == "F"
     assert compute_grade(10, 0) == "N/A"
+
+
+def test_student_enrolled_subjects_completed_and_running(monkeypatch):
+    _mock_auth(
+        monkeypatch,
+        role="student",
+        tables={
+            "students": [{"id": 1, "profile_id": "user-1", "course_id": 1, "semester_id": 6}],
+            "attendance_records": [],
+            "results": [],
+            "leave_applications": [],
+            "enrollments": [
+                {
+                    "id": 10,
+                    "student_id": 1,
+                    "semester_id": 2,
+                    "semesters": {"id": 2, "name": "1st Semester (1/1)", "semester_number": 1, "is_current": False},
+                    "subjects": {"id": 101, "code": "CSE 1101", "name": "Structured Programming with C", "credits": 3},
+                },
+                {
+                    "id": 11,
+                    "student_id": 1,
+                    "semester_id": 6,
+                    "semesters": {"id": 6, "name": "5th Semester (3/1)", "semester_number": 5, "is_current": True},
+                    "subjects": {"id": 140, "code": "CSE 3101", "name": "Data Communication Engineering", "credits": 3},
+                },
+            ],
+        },
+    )
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "stud-tok")
+
+    stats = client.get("/api/student/stats")
+    assert stats.status_code == 200
+    counts = stats.get_json()["counts"]
+    assert counts["subjects"] == 2
+    assert counts["running_subjects"] == 1
+    assert counts["completed_subjects"] == 1
+
+    subs = client.get("/api/student/subjects")
+    assert subs.status_code == 200
+    rows = subs.get_json()
+    assert len(rows) == 2
+    assert rows[0]["code"] == "CSE 3101"
+    assert rows[0]["semester_status"] == "running"
+    assert rows[1]["code"] == "CSE 1101"
+    assert rows[1]["semester_status"] == "completed"

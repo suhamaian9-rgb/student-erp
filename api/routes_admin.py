@@ -405,13 +405,32 @@ def manage_students():
 def manage_enrollments():
     try:
         if request.method == "GET":
-            resp = (
-                g.db.table("enrollments")
-                .select("*, students(id, roll_number, profiles(first_name, last_name)), subjects(id, name, code), semesters(id, name)")
-                .order("id", desc=True)
-                .execute()
-            )
-            return jsonify(resp.data or []), 200
+            semester_id = request.args.get("semester_id")
+            student_id = request.args.get("student_id")
+            subject_id = request.args.get("subject_id")
+            page_size = 1000
+            offset = 0
+            all_rows = []
+            while True:
+                query = (
+                    g.db.table("enrollments")
+                    .select(
+                        "*, students(id, roll_number, profiles(first_name, last_name), academic_sessions(name)), "
+                        "subjects(id, name, code), semesters(id, name, semester_number, is_current)"
+                    )
+                )
+                if semester_id:
+                    query = query.eq("semester_id", semester_id)
+                if student_id:
+                    query = query.eq("student_id", student_id)
+                if subject_id:
+                    query = query.eq("subject_id", subject_id)
+                chunk = query.order("id", desc=True).range(offset, offset + page_size - 1).execute().data or []
+                all_rows.extend(chunk)
+                if len(chunk) < page_size:
+                    break
+                offset += page_size
+            return jsonify(all_rows), 200
         data = request.get_json(silent=True) or {}
         if request.method == "POST":
             err = require_fields(data, ["student_id", "subject_id"])

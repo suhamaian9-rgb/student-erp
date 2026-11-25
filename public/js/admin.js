@@ -576,13 +576,15 @@
       exportFn: (filtered) => {
         ERP.exportCsv(
           "enrollments.csv",
-          ["Roll No", "Student", "Subject Code", "Subject", "Semester"],
+          ["Roll No", "Student", "Batch", "Subject Code", "Subject", "Semester", "Status"],
           filtered.map((r) => [
             r.students?.roll_number,
             `${r.students?.profiles?.first_name || ""} ${r.students?.profiles?.last_name || ""}`.trim(),
+            r.students?.academic_sessions?.name || "",
             r.subjects?.code,
             r.subjects?.name,
             r.semesters?.name || "",
+            r.semesters ? (r.semesters.is_current ? "Running" : "Completed") : "",
           ])
         );
       },
@@ -590,8 +592,18 @@
       columns: [
         { label: "Roll No", render: (r) => `<span class="badge bg-dark">${esc(r.students?.roll_number || "—")}</span>` },
         { label: "Student", render: (r) => `<strong>${esc(r.students?.profiles?.first_name || "")} ${esc(r.students?.profiles?.last_name || "")}</strong>` },
+        { label: "Batch", render: (r) => esc(r.students?.academic_sessions?.name || "—") },
         { label: "Subject", render: (r) => `<span class="badge bg-info text-dark me-1">${esc(r.subjects?.code || "")}</span>${esc(r.subjects?.name || "—")}` },
         { label: "Semester", render: (r) => esc(r.semesters?.name || "—") },
+        {
+          label: "Status",
+          render: (r) => {
+            if (!r.semesters) return "—";
+            return r.semesters.is_current
+              ? '<span class="badge bg-success">Running</span>'
+              : '<span class="badge bg-secondary">Completed</span>';
+          },
+        },
         {
           label: "Actions",
           render: (r) => `<button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Remove</button>`,

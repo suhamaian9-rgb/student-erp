@@ -94,21 +94,37 @@
   // 2. MY SUBJECTS
   async function loadSubjects(signal) {
     const rows = await ERP.cachedApi("/api/student/subjects", { signal });
+    const runningCount = rows.filter((s) => s.semester_status === "running").length;
+    const completedCount = rows.filter((s) => s.semester_status === "completed").length;
+    const totalCredits = rows.reduce((sum, s) => sum + (Number(s.credits) || 0), 0);
+    const statusBadge = (st) => {
+      if (st === "running") return '<span class="badge bg-success">Running</span>';
+      if (st === "completed") return '<span class="badge bg-secondary">Completed</span>';
+      return '<span class="badge bg-light text-dark border">Catalog</span>';
+    };
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
-        <h5 class="fw-bold mb-3">Enrolled Course Subjects</h5>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <h5 class="fw-bold mb-0">Enrolled Course Subjects</h5>
+          <div class="d-flex flex-wrap gap-2 small">
+            <span class="badge bg-success-subtle text-success">Running: ${runningCount}</span>
+            <span class="badge bg-secondary-subtle text-secondary">Completed: ${completedCount}</span>
+            <span class="badge bg-primary-subtle text-primary">Total Credits: ${totalCredits}</span>
+          </div>
+        </div>
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
-            <thead><tr><th>Code</th><th>Subject</th><th>Course</th><th>Credits</th><th>Instructor</th></tr></thead>
+            <thead><tr><th>Code</th><th>Subject</th><th>Semester</th><th>Status</th><th>Credits</th><th>Instructor</th></tr></thead>
             <tbody>
               ${rows.map((s) => `
                 <tr>
                   <td><span class="badge bg-primary">${esc(s.code)}</span></td>
                   <td><strong>${esc(s.name)}</strong></td>
-                  <td>${esc(s.courses?.name || "—")}</td>
+                  <td>${esc(s.semesters?.name || "—")}</td>
+                  <td>${statusBadge(s.semester_status)}</td>
                   <td>${s.credits}</td>
                   <td>${s.teachers?.profiles ? esc(`${s.teachers.profiles.first_name} ${s.teachers.profiles.last_name}`) : "TBA"}</td>
-                </tr>`).join("") || `<tr><td colspan="5" class="text-center text-muted">No subjects found for your course.</td></tr>`}
+                </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted">No subjects found for your course.</td></tr>`}
             </tbody>
           </table>
         </div>

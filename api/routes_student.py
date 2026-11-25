@@ -10,7 +10,7 @@ student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 def _get_student_record():
     resp = (
         g.db.table("students")
-        .select("*, courses(id, name, code, departments(name)), academic_sessions(id, name), semesters(id, name)")
+        .select("*, courses(id, name, code, departments(name)), academic_sessions(id, name), semesters(id, name, semester_number, is_current)")
         .eq("profile_id", g.profile["id"])
         .single()
         .execute()
@@ -32,6 +32,7 @@ def get_stats():
 
         tasks = {
             "records": lambda: db.table("attendance_records").select("id, status").eq("student_id", sid).execute().data or [],
+            "enrollments": lambda: db.table("enrollments").select("id, semesters(id, is_current)").eq("student_id", sid).execute().data or [],
             "results": lambda: db.table("results").select("id").eq("student_id", sid).execute().data or [],
             "leaves": lambda: db.table("leave_applications").select("id, status").eq("applicant_id", profile_id).execute().data or [],
         }
@@ -43,7 +44,11 @@ def get_stats():
         total_att = len(records)
         present_att = sum(1 for r in records if r.get("status") in ("present", "late"))
         att_pct = round((present_att / total_att) * 100, 1) if total_att > 0 else 0.0
+        enrollments = fetched.get("enrollments", [])
         subjects = fetched.get("subjects", [])
+        subject_count = len(enrollments) if enrollments else len(subjects)
+        running_subjects = sum(1 for e in enrollments if (e.get("semesters") or {}).get("is_current"))
+        completed_subjects = len(enrollments) - running_subjects
         results = fetched["results"]
         leaves = fetched["leaves"]
 
@@ -54,7 +59,9 @@ def get_stats():
                 "total_classes": total_att,
                 "present_classes": present_att,
                 "absent_classes": total_att - present_att,
-                "subjects": len(subjects),
+                "subjects": subject_count,
+                "running_subjects": running_subjects,
+                "completed_subjects": completed_subjects,
                 "results": len(results),
                 "pending_leaves": sum(1 for l in leaves if l.get("status") == "pending"),
             },
@@ -68,16 +75,55 @@ def get_stats():
 def get_subjects():
     try:
         student = _get_student_record()
-        if not student or not student.get("course_id"):
+        if not student:
+            return jsonify([]), 200
+        enr_resp = (
+            g.db.table("enrollments")
+            .select(
+                "id, semester_id, semesters(id, name, semester_number, is_current), "
+                "subjects(*, courses(id, name, code), teachers(id, employee_id, profiles(first_name, last_name, email)))"
+            )
+            .eq("student_id", student["id"])
+            .execute()
+        )
+        enr_rows = enr_resp.data or []
+        if enr_rows:
+            items = []
+            for enr in enr_rows:
+                subj = enr.get("subjects")
+                if not subj:
+                    continue
+                sem = enr.get("semesters") or subj.get("semesters") or {}
+                item = dict(subj)
+                item["semesters"] = sem or None
+                item["enrollment_id"] = enr.get("id")
+                item["semester_status"] = "running" if sem.get("is_current") else "completed"
+                items.append(item)
+            items.sort(
+                key=lambda x: (
+                    0 if x.get("semester_status") == "running" else 1,
+                    -((x.get("semesters") or {}).get("semester_number") or 0),
+                    x.get("code") or "",
+                )
+            )
+            return jsonify(items), 200
+        if not student.get("course_id"):
             return jsonify([]), 200
         resp = (
             g.db.table("subjects")
-            .select("*, courses(id, name, code), semesters(id, name), teachers(id, employee_id, profiles(first_name, last_name, email))")
+            .select("*, courses(id, name, code), semesters(id, name, semester_number, is_current), teachers(id, employee_id, profiles(first_name, last_name, email))")
             .eq("course_id", student["course_id"])
             .order("name")
             .execute()
         )
-        return jsonify(resp.data or []), 200
+        fallback = []
+        for subj in (resp.data or []):
+            sem = subj.get("semesters") or {}
+            item = dict(subj)
+            is_run = bool(sem.get("is_current") or (student.get("semester_id") and subj.get("semester_id") == student["semester_id"]))
+            item["semester_status"] = "running" if is_run else "catalog"
+            fallback.append(item)
+        return jsonify(fallback), 200
     except Exception as exc:
         return safe_error(exc)
 
