@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error — University ERP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">
+  <link href="/css/error.css" rel="stylesheet">
+</head>
+<body>
+  <main id="error-container">
+    <span class="geo-shape geo-ring" aria-hidden="true"></span>
+    <span class="geo-shape geo-square" aria-hidden="true"></span>
+    <span class="geo-shape geo-diamond" aria-hidden="true"></span>
+    <span class="geo-shape geo-dots" aria-hidden="true"></span>
+
+    <div class="error-content">
+      <h1 id="error-code" class="error-code">404</h1>
+      <h2 id="error-headline" class="error-badge">Oops! Page not found</h2>
+      <p id="error-desc" class="error-desc">
+        The page you were looking for doesn't exist. You may have mistyped the address or the page may have moved.
+      </p>
+      <div class="error-actions">
+        <a href="/" class="btn-oops">Back To Home</a>
+        <button type="button" id="btn-go-back" class="btn-oops btn-oops-secondary">Go Back</button>
+      </div>
+      <div class="situation-pills" aria-label="Error situations">
+        <a href="/error.html?code=400" class="situation-pill" data-code="400">400 Bad Request</a>
+        <a href="/error.html?code=401" class="situation-pill" data-code="401">401 Session Expired</a>
+        <a href="/error.html?code=403" class="situation-pill" data-code="403">403 Access Denied</a>
+        <a href="/error.html?code=404" class="situation-pill active" data-code="404">404 Not Found</a>
+        <a href="/error.html?code=500" class="situation-pill" data-code="500">500 Server Error</a>
+        <a href="/error.html?code=503" class="situation-pill" data-code="503">503 Maintenance</a>
+      </div>
+    </div>
+  </main>
+  <script src="/js/error.js" defer></script>
+</body>
+</html>

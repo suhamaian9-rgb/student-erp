@@ -14,21 +14,36 @@
 </head>
 <body>
   <div class="auth-split">
-    <!-- Institutional Left Panel -->
-    <section class="auth-hero d-none d-lg-flex">
+    <!-- Institutional Left Panel (Animated & Interactive) -->
+    <section class="auth-hero d-none d-lg-flex" id="auth-hero">
+      <div class="hero-shapes" aria-hidden="true">
+        <span class="hero-shape shape-1"></span>
+        <span class="hero-shape shape-2"></span>
+        <span class="hero-shape shape-3"></span>
+        <span class="hero-shape shape-4"><i class="bi bi-book-half"></i></span>
+        <span class="hero-shape shape-5"><i class="bi bi-award-fill"></i></span>
+        <span class="hero-shape shape-6"><i class="bi bi-stars"></i></span>
+      </div>
+
       <div class="auth-hero-inner my-auto">
         <div class="d-flex align-items-center gap-3 mb-4">
-          <span class="crest-badge"><i class="bi bi-mortarboard-fill"></i></span>
+          <span class="crest-badge crest-float"><i class="bi bi-mortarboard-fill"></i></span>
           <div>
             <div class="text-uppercase small fw-semibold opacity-75" style="letter-spacing:0.08em;">Academic Portal</div>
             <div class="fs-5 fw-bold font-serif">University ERP</div>
           </div>
         </div>
 
-        <h1 class="display-5 fw-bold mb-3">University Enterprise Resource Portal</h1>
-        <p class="lead opacity-75 mb-0" style="font-size:1.05rem;">
+        <h1 class="display-5 fw-bold mb-3 hero-title-anim">University Enterprise Resource Portal</h1>
+        <p class="lead opacity-75 mb-4" style="font-size:1.05rem;">
           Centralized academic administration for university leadership, faculty members, and students.
         </p>
+
+        <div class="d-flex flex-wrap gap-2 hero-badges">
+          <span class="hero-pill"><i class="bi bi-calendar-check me-1"></i> Live Attendance</span>
+          <span class="hero-pill"><i class="bi bi-bar-chart-line me-1"></i> Instant Results</span>
+          <span class="hero-pill"><i class="bi bi-shield-lock me-1"></i> Role-Protected</span>
+        </div>
       </div>
 
       <div class="small opacity-50 position-relative">
@@ -38,13 +53,39 @@
 
     <!-- Login Form Right Panel -->
     <main class="auth-form-pane">
-      <div class="auth-card p-4 p-md-5">
-        <div class="mb-4">
-          <div class="d-flex align-items-center gap-2 d-lg-none mb-3">
+      <div class="auth-card auth-card-enter p-4 p-md-5" id="auth-card">
+        <!-- Playful Interactive Mascot -->
+        <div class="mascot-wrap mb-3" id="mascot-buddy" aria-hidden="true">
+          <svg class="mascot-svg" viewBox="0 0 120 100" width="96" height="80">
+            <!-- Body -->
+            <ellipse cx="60" cy="62" rx="38" ry="32" fill="#1E3A5F"/>
+            <ellipse cx="60" cy="68" rx="24" ry="22" fill="#F8FAFC"/>
+            <!-- Graduation Cap -->
+            <polygon points="60,8 22,23 60,36 98,23" fill="#0F172A"/>
+            <rect x="40" y="27" width="40" height="8" rx="3" fill="#1E293B"/>
+            <line x1="92" y1="24" x2="96" y2="42" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="96" cy="44" r="3.5" fill="#F59E0B"/>
+            <!-- Eyes -->
+            <circle cx="45" cy="52" r="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+            <circle cx="75" cy="52" r="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+            <circle class="mascot-pupil" id="pupil-left" cx="45" cy="52" r="4.5" fill="#0F172A"/>
+            <circle class="mascot-pupil" id="pupil-right" cx="75" cy="52" r="4.5" fill="#0F172A"/>
+            <circle cx="47" cy="50" r="1.5" fill="#FFFFFF"/>
+            <circle cx="77" cy="50" r="1.5" fill="#FFFFFF"/>
+            <!-- Beak -->
+            <polygon points="55,58 65,58 60,65" fill="#F59E0B"/>
+            <!-- Wings (cover eyes on password focus) -->
+            <path class="mascot-wing wing-left" d="M22,64 C16,52 24,42 36,46 C44,49 46,58 38,66 Z" fill="#2563EB"/>
+            <path class="mascot-wing wing-right" d="M98,64 C104,52 96,42 84,46 C76,49 74,58 82,66 Z" fill="#2563EB"/>
+          </svg>
+        </div>
+
+        <div class="mb-4 text-center text-md-start">
+          <div class="d-flex align-items-center justify-content-center justify-content-md-start gap-2 d-lg-none mb-2">
             <span class="badge bg-primary p-2"><i class="bi bi-mortarboard-fill fs-5"></i></span>
             <span class="fw-bold font-serif fs-5">University ERP</span>
           </div>
-          <h2 class="h3 fw-bold mb-1">Sign In</h2>
+          <h2 class="h3 fw-bold mb-1">Welcome Back</h2>
           <p class="text-muted small mb-0">Enter your university credentials to continue</p>
         </div>
 

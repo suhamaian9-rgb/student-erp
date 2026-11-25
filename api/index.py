@@ -81,6 +81,30 @@ def serve_index():
     return app.send_static_file("index.html")
 
 
+@app.errorhandler(403)
+def handle_forbidden(err):
+    """Return JSON for API routes or OopsBox 403 page for browser routes."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Forbidden"}), 403
+    return app.send_static_file("403.html"), 403
+
+
+@app.errorhandler(404)
+def handle_not_found(err):
+    """Return JSON for API routes or OopsBox 404 page for browser routes."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Not found"}), 404
+    return app.send_static_file("404.html"), 404
+
+
+@app.errorhandler(500)
+def handle_server_error(err):
+    """Return JSON for API routes or OopsBox 500 page for browser routes."""
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Internal server error"}), 500
+    return app.send_static_file("500.html"), 500
+
+
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Verify the API service is online without exposing infrastructure details."""

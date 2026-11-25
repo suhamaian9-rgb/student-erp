@@ -57,7 +57,9 @@ h1, h2, h3, .font-serif {
 }
 
 .auth-hero {
-  background: linear-gradient(155deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  background: linear-gradient(155deg, var(--color-primary) 0%, #1d4ed8 55%, var(--color-primary-dark) 100%);
+  background-size: 160% 160%;
+  animation: hero-gradient 14s ease infinite;
   color: #FFFFFF;
   padding: 3rem 3.5rem;
   display: flex;
@@ -65,6 +67,141 @@ h1, h2, h3, .font-serif {
   justify-content: space-between;
   position: relative;
   overflow: hidden;
+}
+
+@keyframes hero-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.hero-shapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hero-shape {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.22);
+  transition: transform 0.25s ease-out;
+}
+
+.shape-1 {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 3px solid rgba(253, 230, 138, 0.22);
+  top: 10%;
+  right: 12%;
+  animation: float-bob 7s ease-in-out infinite;
+}
+
+.shape-2 {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  bottom: 18%;
+  right: 18%;
+  animation: float-bob 9s ease-in-out infinite reverse;
+}
+
+.shape-3 {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.2);
+  top: 26%;
+  left: 10%;
+  animation: float-bob 6s ease-in-out infinite;
+}
+
+.shape-4 { font-size: 2.2rem; bottom: 28%; left: 12%; animation: float-bob 8s ease-in-out infinite; }
+.shape-5 { font-size: 2rem; top: 18%; right: 34%; animation: float-bob 6.5s ease-in-out infinite reverse; }
+.shape-6 { font-size: 1.7rem; bottom: 12%; left: 38%; animation: float-bob 7.5s ease-in-out infinite; }
+
+@keyframes float-bob {
+  0%, 100% { margin-top: 0px; }
+  50% { margin-top: -16px; }
+}
+
+.crest-float {
+  animation: float-bob 4.5s ease-in-out infinite;
+}
+
+.hero-pill {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #F8FAFC;
+  backdrop-filter: blur(4px);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.hero-pill:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.auth-card-enter {
+  animation: card-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes card-pop {
+  0% { opacity: 0; transform: translateY(18px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.auth-shake {
+  animation: card-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes card-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+
+.mascot-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.mascot-svg {
+  overflow: visible;
+  transition: transform 0.25s ease;
+}
+
+.mascot-wrap:hover .mascot-svg {
+  transform: translateY(-3px) rotate(-2deg);
+}
+
+.mascot-wing {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.mascot-wrap.cover-eyes .wing-left {
+  transform: translate(18px, -11px) rotate(14deg) scale(1.12);
+}
+
+.mascot-wrap.cover-eyes .wing-right {
+  transform: translate(-18px, -11px) rotate(-14deg) scale(1.12);
+}
+
+.mascot-wrap.cover-eyes.peek-eye .wing-right {
+  transform: translate(-12px, -3px) rotate(-6deg) scale(1.04);
 }
 
 .auth-hero::before {
