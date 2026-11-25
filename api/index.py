@@ -81,12 +81,42 @@ def serve_index():
     return app.send_static_file("index.html")
 
 
+def _render_error_page(code: int, headline: str, desc: str):
+    """Serve static error page locally, or lightweight OopsBox HTML referencing CDN assets."""
+    static_path = os.path.join(app.static_folder or "", f"{code}.html")
+    if os.path.isfile(static_path):
+        return app.send_static_file(f"{code}.html"), code
+    html = (
+        f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1.0">'
+        f'<title>{code} — University ERP</title>'
+        f'<link href="/css/error.css" rel="stylesheet"></head><body>'
+        f'<main id="error-container">'
+        f'<span class="geo-shape geo-ring" aria-hidden="true"></span>'
+        f'<span class="geo-shape geo-square" aria-hidden="true"></span>'
+        f'<span class="geo-shape geo-diamond" aria-hidden="true"></span>'
+        f'<span class="geo-shape geo-dots" aria-hidden="true"></span>'
+        f'<div class="error-content">'
+        f'<h1 id="error-code" class="error-code">{code}</h1>'
+        f'<h2 id="error-headline" class="error-badge">{headline}</h2>'
+        f'<p id="error-desc" class="error-desc">{desc}</p>'
+        f'<div class="error-actions"><a href="/" class="btn-oops">Back To Home</a>'
+        f'<button type="button" id="btn-go-back" class="btn-oops btn-oops-secondary">Go Back</button></div>'
+        f'</div></main><script src="/js/error.js" defer></script></body></html>'
+    )
+    return make_response(html, code)
+
+
 @app.errorhandler(403)
 def handle_forbidden(err):
     """Return JSON for API routes or OopsBox 403 page for browser routes."""
     if request.path.startswith("/api/"):
         return jsonify({"error": "Forbidden"}), 403
-    return app.send_static_file("403.html"), 403
+    return _render_error_page(
+        403,
+        "Restricted Area! Access denied",
+        "You don't have permission to open this portal or resource. Please sign in with an authorized account.",
+    )
 
 
 @app.errorhandler(404)
@@ -94,7 +124,11 @@ def handle_not_found(err):
     """Return JSON for API routes or OopsBox 404 page for browser routes."""
     if request.path.startswith("/api/"):
         return jsonify({"error": "Not found"}), 404
-    return app.send_static_file("404.html"), 404
+    return _render_error_page(
+        404,
+        "Oops! Page not found",
+        "The page you were looking for doesn't exist. You may have mistyped the address or the page may have moved.",
+    )
 
 
 @app.errorhandler(500)
@@ -102,7 +136,11 @@ def handle_server_error(err):
     """Return JSON for API routes or OopsBox 500 page for browser routes."""
     if request.path.startswith("/api/"):
         return jsonify({"error": "Internal server error"}), 500
-    return app.send_static_file("500.html"), 500
+    return _render_error_page(
+        500,
+        "Whoa! Something broke on our end",
+        "Our servers hit an unexpected bump while processing your request. Please refresh or try again shortly.",
+    )
 
 
 @app.route("/api/health", methods=["GET"])
