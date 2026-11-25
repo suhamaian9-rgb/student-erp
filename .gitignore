@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel
+
+# Supabase local
+.supabase/
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
+*.log
