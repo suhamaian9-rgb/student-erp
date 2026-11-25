@@ -708,7 +708,7 @@
           <div class="col-md-4"><label class="form-label">Username</label><input class="form-control" id="st-user" value="${esc(item?.profiles?.username || "")}" placeholder="e.g. john-doe"></div>
           ${!item ? `
           <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="st-email" required></div>
-          <div class="col-md-6"><label class="form-label">Password</label><input type="password" class="form-control" id="st-pw" minlength="6" required></div>` : ""}
+          <div class="col-md-6"><label class="form-label">Password <small class="text-muted">(default: student@prstu)</small></label><input type="password" class="form-control" id="st-pw" minlength="6" value="student@prstu" placeholder="student@prstu"></div>` : ""}
           <div class="col-md-3"><label class="form-label">Roll Number</label><input class="form-control" id="st-roll" value="${esc(item?.roll_number || "")}" required></div>
           <div class="col-md-3"><label class="form-label">Course</label>
             <select class="form-select" id="st-course"><option value="">— Select —</option>${courses.map((c) => `<option value="${c.id}" ${item?.course_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>

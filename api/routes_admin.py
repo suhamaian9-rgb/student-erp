@@ -337,12 +337,13 @@ def manage_students():
         data = request.get_json(silent=True) or {}
 
         if request.method == "POST":
-            err = require_fields(data, ["email", "password", "first_name", "last_name", "roll_number"])
+            err = require_fields(data, ["email", "first_name", "last_name", "roll_number"])
             if err:
                 return err
+            password = str(data.get("password") or "").strip() or "student@prstu"
             profile_id = _create_user_account(
                 email=data["email"].strip().lower(),
-                password=data["password"],
+                password=password,
                 first_name=data["first_name"].strip(),
                 last_name=data["last_name"].strip(),
                 role="student",
