@@ -2,7 +2,7 @@
 
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import compute_grade, require_fields
+from api.helpers import compute_grade, require_fields, safe_error
 
 teacher_bp = Blueprint("teacher", __name__, url_prefix="/api/teacher")
 
@@ -60,7 +60,7 @@ def get_stats():
             "subject_chart": chart_data,
         }), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/subjects", methods=["GET"])
@@ -79,7 +79,7 @@ def get_subjects():
         )
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/sessions", methods=["GET"])
@@ -89,7 +89,7 @@ def get_sessions():
         resp = g.db.table("academic_sessions").select("*").order("start_date", desc=True).execute()
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/examinations", methods=["GET"])
@@ -104,7 +104,7 @@ def get_examinations():
         )
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/students", methods=["GET"])
@@ -134,7 +134,7 @@ def get_students():
         resp = query.order("roll_number").execute()
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/attendance", methods=["GET", "POST"])
@@ -207,7 +207,7 @@ def manage_attendance():
 
         return jsonify({"attendance_session": att_session, "records_saved": len(records_payload)}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/attendance/<int:att_session_id>", methods=["PUT"])
@@ -241,7 +241,7 @@ def update_attendance(att_session_id: int):
 
         return jsonify({"updated": True, "records_updated": updated_count}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/results", methods=["GET", "POST", "PUT"])
@@ -292,7 +292,7 @@ def manage_results():
         resp = g.db.table("results").upsert(payload, on_conflict="examination_id,student_id,subject_id").execute()
         return jsonify(resp.data[0] if resp.data else {}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/leaves", methods=["GET", "POST"])
@@ -322,7 +322,7 @@ def manage_leaves():
         }).execute()
         return jsonify(resp.data[0] if resp.data else {}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @teacher_bp.route("/feedback", methods=["GET", "POST"])
@@ -351,4 +351,4 @@ def manage_feedback():
         }).execute()
         return jsonify(resp.data[0] if resp.data else {}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)

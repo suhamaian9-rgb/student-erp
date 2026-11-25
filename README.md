@@ -1,6 +1,6 @@
-# College ERP Management System
+# University ERP Management System
 
-A full-stack, production-style College Enterprise Resource Planning (ERP) web application built with **HTML5, CSS3, Vanilla JavaScript, Bootstrap 5, Python (Flask), Supabase PostgreSQL, Vercel, and GitHub Actions**.
+A full-stack, production-style University Enterprise Resource Planning (ERP) web application built with **HTML5, CSS3, Vanilla JavaScript, Bootstrap 5, Python (Flask), Supabase PostgreSQL, Vercel, and GitHub Actions**.
 
 ## Attribution
 Functional and design reference inspired by [Ansarimajid/College-ERP](https://github.com/Ansarimajid/College-ERP) (MIT License, Copyright (c) 2020 Owonubi Job Sunday).

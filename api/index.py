@@ -1,4 +1,4 @@
-"""Main Flask application for the College ERP System.
+"""Main Flask application for the University ERP System.
 
 Deployed as a Vercel Python serverless function via /api/*.
 Also serves static files from ../public during local development.
@@ -16,16 +16,33 @@ from flask import Flask, g, jsonify, request
 load_dotenv()
 
 from api.auth_utils import require_auth  # noqa: E402
+from api.helpers import USERNAME_RE, require_fields  # noqa: E402
 from api.routes_admin import admin_bp  # noqa: E402
 from api.routes_student import student_bp  # noqa: E402
 from api.routes_teacher import teacher_bp  # noqa: E402
-from api.supabase_client import get_admin_client, get_supabase_anon_key, get_supabase_url  # noqa: E402
+from api.supabase_client import (  # noqa: E402
+    get_admin_client,
+    get_anon_client,
+    get_supabase_anon_key,
+    get_supabase_url,
+)
 
 app = Flask(__name__, static_folder="../public", static_url_path="")
 
 app.register_blueprint(admin_bp)
 app.register_blueprint(teacher_bp)
 app.register_blueprint(student_bp)
+
+
+@app.after_request
+def add_security_headers(response):
+    """Attach security headers to all Flask responses (defense in depth)."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/")
@@ -40,7 +57,7 @@ def health_check():
     configured = bool(get_supabase_url() and get_supabase_anon_key())
     return jsonify({
         "status": "ok",
-        "service": "College ERP API",
+        "service": "University ERP API",
         "supabase_configured": configured,
     }), 200
 
@@ -58,6 +75,52 @@ def public_config():
     }), 200
 
 
+@app.route("/api/auth/login", methods=["POST"])
+def login_with_identifier():
+    """Authenticate a user via either username or email + password."""
+    data = request.get_json(silent=True) or {}
+    err = require_fields(data, ["identifier", "password"])
+    if err:
+        return err
+
+    identifier = str(data["identifier"]).strip().lower()
+    password = str(data["password"])
+
+    email = identifier
+    if "@" not in identifier:
+        if not USERNAME_RE.match(identifier):
+            return jsonify({"error": "Invalid username or password"}), 401
+        admin_client = get_admin_client()
+        if not admin_client:
+            return jsonify({"error": "Username login is not configured on the server"}), 500
+        try:
+            prof = (
+                admin_client.table("profiles")
+                .select("email, is_active")
+                .ilike("username", identifier)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not prof or not prof[0].get("is_active", True):
+                return jsonify({"error": "Invalid username or password"}), 401
+            email = prof[0]["email"]
+        except Exception:
+            return jsonify({"error": "Invalid username or password"}), 401
+
+    try:
+        anon = get_anon_client()
+        res = anon.auth.sign_in_with_password({"email": email, "password": password})
+        if not res.session or not res.user:
+            return jsonify({"error": "Invalid username or password"}), 401
+        return jsonify({
+            "access_token": res.session.access_token,
+            "refresh_token": res.session.refresh_token,
+        }), 200
+    except Exception:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+
 @app.route("/api/me", methods=["GET", "PUT"])
 @require_auth
 def current_user_profile():
@@ -65,10 +128,22 @@ def current_user_profile():
     if request.method == "GET":
         role_record = None
         if g.role == "teacher":
-            resp = g.db.table("teachers").select("*, departments(id, name, code)").eq("profile_id", g.profile["id"]).maybe_single().execute()
+            resp = (
+                g.db.table("teachers")
+                .select("*, departments(id, name, code)")
+                .eq("profile_id", g.profile["id"])
+                .maybe_single()
+                .execute()
+            )
             role_record = resp.data
         elif g.role == "student":
-            resp = g.db.table("students").select("*, courses(id, name, code), academic_sessions(id, name), semesters(id, name)").eq("profile_id", g.profile["id"]).maybe_single().execute()
+            resp = (
+                g.db.table("students")
+                .select("*, courses(id, name, code), academic_sessions(id, name), semesters(id, name)")
+                .eq("profile_id", g.profile["id"])
+                .maybe_single()
+                .execute()
+            )
             role_record = resp.data
         return jsonify({"profile": g.profile, "role_record": role_record}), 200
 
@@ -111,114 +186,6 @@ def mark_notification_read(notif_id: int):
         .execute()
     )
     return jsonify(resp.data[0] if resp.data else {}), 200
-
-
-@app.route("/api/bootstrap-demo", methods=["POST"])
-def bootstrap_demo_data():
-    """One-time initializer that creates 3 demo accounts and sample academic data
-    only when the database has zero profiles. Locks itself permanently afterward.
-    """
-    admin_client = get_admin_client()
-    if not admin_client:
-        return jsonify({"error": "SUPABASE_SERVICE_ROLE_KEY is not configured on the server"}), 500
-
-    existing = admin_client.table("profiles").select("id").limit(1).execute().data or []
-    if len(existing) > 0:
-        return jsonify({"error": "Database is already initialized"}), 409
-
-    # 1. Create 3 demo Auth users (trigger creates profiles automatically)
-    demo_users = [
-        ("admin@college-erp.edu", "Admin@1234", "HOD", "Admin", "admin"),
-        ("teacher@college-erp.edu", "Teacher@1234", "Alan", "Turing", "teacher"),
-        ("student@college-erp.edu", "Student@1234", "Ada", "Lovelace", "student"),
-    ]
-    user_ids = {}
-    for email, pw, fn, ln, role in demo_users:
-        created = admin_client.auth.admin.create_user({
-            "email": email,
-            "password": pw,
-            "email_confirm": True,
-            "user_metadata": {"first_name": fn, "last_name": ln, "role": role},
-        })
-        uid = created.user.id
-        admin_client.table("profiles").update({
-            "first_name": fn,
-            "last_name": ln,
-            "role": role,
-        }).eq("id", uid).execute()
-        user_ids[role] = uid
-
-    # 2. Seed Department, Course, Session, Semester
-    dept = admin_client.table("departments").insert({
-        "name": "Computer Science & Engineering",
-        "code": "CSE",
-        "description": "Department of Computer Science and Software Engineering",
-    }).execute().data[0]
-
-    course = admin_client.table("courses").insert({
-        "department_id": dept["id"],
-        "name": "B.Tech Computer Science",
-        "code": "BTCS",
-        "duration_years": 4,
-    }).execute().data[0]
-
-    session = admin_client.table("academic_sessions").insert({
-        "name": "2026-2027",
-        "start_date": "2026-08-01",
-        "end_date": "2027-05-31",
-        "is_current": True,
-    }).execute().data[0]
-
-    semester = admin_client.table("semesters").insert({
-        "session_id": session["id"],
-        "name": "Fall 2026",
-        "semester_number": 1,
-        "start_date": "2026-08-01",
-        "end_date": "2026-12-20",
-        "is_current": True,
-    }).execute().data[0]
-
-    # 3. Seed Teacher, Student, Subject, Enrollment, Examination
-    teacher = admin_client.table("teachers").insert({
-        "profile_id": user_ids["teacher"],
-        "department_id": dept["id"],
-        "employee_id": "EMP-101",
-        "qualification": "Ph.D. Computer Science",
-    }).execute().data[0]
-
-    student = admin_client.table("students").insert({
-        "profile_id": user_ids["student"],
-        "course_id": course["id"],
-        "session_id": session["id"],
-        "semester_id": semester["id"],
-        "roll_number": "CSE-2026-001",
-    }).execute().data[0]
-
-    subject = admin_client.table("subjects").insert({
-        "course_id": course["id"],
-        "semester_id": semester["id"],
-        "teacher_id": teacher["id"],
-        "name": "Data Structures & Algorithms",
-        "code": "CS201",
-        "credits": 4,
-    }).execute().data[0]
-
-    admin_client.table("enrollments").insert({
-        "student_id": student["id"],
-        "subject_id": subject["id"],
-        "semester_id": semester["id"],
-    }).execute()
-
-    admin_client.table("examinations").insert({
-        "name": "Midterm Fall 2026",
-        "exam_type": "midterm",
-        "session_id": session["id"],
-        "semester_id": semester["id"],
-        "exam_date": "2026-10-15",
-        "max_marks": 100,
-    }).execute()
-
-    return jsonify({"initialized": True, "accounts_created": 3}), 201
 
 
 if __name__ == "__main__":

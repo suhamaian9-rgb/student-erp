@@ -880,7 +880,7 @@
               <option value="teacher">All Teachers</option>
             </select>
           </div>
-          <div class="col-12"><label class="form-label">Title</label><input id="n-title" class="form-control" value="College ERP Notice" required></div>
+          <div class="col-12"><label class="form-label">Title</label><input id="n-title" class="form-control" value="University ERP Notice" required></div>
           <div class="col-12"><label class="form-label">Message</label><textarea id="n-msg" class="form-control" rows="3" required placeholder="Write announcement..."></textarea></div>
           <div class="col-12"><button class="btn btn-primary" type="submit">Send Notification</button></div>
         </form>

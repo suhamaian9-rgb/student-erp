@@ -2,7 +2,7 @@
 
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import require_fields
+from api.helpers import require_fields, safe_error
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -52,7 +52,7 @@ def get_stats():
             },
         }), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @student_bp.route("/subjects", methods=["GET"])
@@ -71,7 +71,7 @@ def get_subjects():
         )
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @student_bp.route("/attendance", methods=["GET"])
@@ -109,7 +109,7 @@ def get_attendance():
 
         return jsonify({"records": records, "by_subject": by_subject}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @student_bp.route("/results", methods=["GET"])
@@ -128,7 +128,7 @@ def get_results():
         )
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @student_bp.route("/leaves", methods=["GET", "POST"])
@@ -158,7 +158,7 @@ def manage_leaves():
         }).execute()
         return jsonify(resp.data[0] if resp.data else {}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @student_bp.route("/feedback", methods=["GET", "POST"])
@@ -187,4 +187,4 @@ def manage_feedback():
         }).execute()
         return jsonify(resp.data[0] if resp.data else {}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)

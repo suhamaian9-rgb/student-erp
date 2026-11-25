@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import compute_grade, require_fields
+from api.helpers import compute_grade, require_fields, safe_error
 from api.supabase_client import get_admin_client
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -98,7 +98,7 @@ def manage_departments():
     try:
         return _handle_crud("departments", ["name", "code"], ["name", "code", "description"], "name")
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/courses", methods=["GET", "POST", "PUT", "DELETE"])
@@ -120,7 +120,7 @@ def manage_courses():
             "name",
         )
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/sessions", methods=["GET", "POST", "PUT", "DELETE"])
@@ -134,7 +134,7 @@ def manage_sessions():
             "start_date",
         )
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/semesters", methods=["GET", "POST", "PUT", "DELETE"])
@@ -156,7 +156,7 @@ def manage_semesters():
             "semester_number",
         )
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/subjects", methods=["GET", "POST", "PUT", "DELETE"])
@@ -178,7 +178,7 @@ def manage_subjects():
             "name",
         )
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/examinations", methods=["GET", "POST", "PUT", "DELETE"])
@@ -200,10 +200,10 @@ def manage_examinations():
             "id",
         )
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
-def _create_user_account(email: str, password: str, first_name: str, last_name: str, role: str, gender: str = "M", phone: str = "", address: str = ""):
+def _create_user_account(email: str, password: str, first_name: str, last_name: str, role: str, gender: str = "M", phone: str = "", address: str = "", username: str | None = None):
     """Create a Supabase Auth user + update their profile using the server-only service key."""
     admin_client = get_admin_client()
     if not admin_client:
@@ -211,6 +211,7 @@ def _create_user_account(email: str, password: str, first_name: str, last_name: 
             "SUPABASE_SERVICE_ROLE_KEY is not configured on the server. "
             "Add it to Vercel Environment Variables (never expose to browser) to create users from Admin."
         )
+    clean_username = username.strip().lower() if username and username.strip() else None
     created = admin_client.auth.admin.create_user({
         "email": email,
         "password": password,
@@ -219,6 +220,7 @@ def _create_user_account(email: str, password: str, first_name: str, last_name: 
             "first_name": first_name,
             "last_name": last_name,
             "role": role,
+            "username": clean_username or "",
         },
     })
     user_id = created.user.id
@@ -226,6 +228,7 @@ def _create_user_account(email: str, password: str, first_name: str, last_name: 
         "first_name": first_name,
         "last_name": last_name,
         "role": role,
+        "username": clean_username,
         "gender": gender or "M",
         "phone": phone or "",
         "address": address or "",
@@ -302,7 +305,7 @@ def manage_teachers():
                 g.db.table("profiles").delete().eq("id", profile_id).execute()
             return jsonify({"deleted": True}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/students", methods=["GET", "POST", "PUT", "DELETE"])
@@ -375,7 +378,7 @@ def manage_students():
                 g.db.table("profiles").delete().eq("id", profile_id).execute()
             return jsonify({"deleted": True}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/enrollments", methods=["GET", "POST", "DELETE"])
@@ -408,7 +411,7 @@ def manage_enrollments():
             g.db.table("enrollments").delete().eq("id", eid).execute()
             return jsonify({"deleted": True}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/attendance", methods=["GET"])
@@ -428,7 +431,7 @@ def view_attendance():
         resp = query.order("attendance_date", desc=True).limit(50).execute()
         return jsonify(resp.data or []), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/results", methods=["GET", "POST", "PUT", "DELETE"])
@@ -476,7 +479,7 @@ def manage_results():
             g.db.table("results").delete().eq("id", rid).execute()
             return jsonify({"deleted": True}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/leaves", methods=["GET", "PATCH"])
@@ -511,7 +514,7 @@ def manage_leaves():
         )
         return jsonify(resp.data[0] if resp.data else {}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/feedback", methods=["GET", "PATCH"])
@@ -543,7 +546,7 @@ def manage_feedback():
         )
         return jsonify(resp.data[0] if resp.data else {}), 200
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)
 
 
 @admin_bp.route("/notifications", methods=["POST"])
@@ -555,7 +558,7 @@ def send_notification():
         err = require_fields(data, ["message"])
         if err:
             return err
-        title = data.get("title", "College ERP Notice")
+        title = data.get("title", "University ERP Notice")
         recipient_id = data.get("recipient_id")
         target_role = data.get("target_role")
 
@@ -572,4 +575,4 @@ def send_notification():
             g.db.table("notifications").insert(rows).execute()
         return jsonify({"sent": len(rows)}), 201
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 400
+        return safe_error(exc)

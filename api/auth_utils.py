@@ -48,8 +48,8 @@ def require_auth(fn):
             g.profile = profile
             g.role = profile.get("role")
             g.db = db
-        except Exception as exc:
-            return jsonify({"error": "Authentication failed", "detail": str(exc)}), 401
+        except Exception:
+            return jsonify({"error": "Authentication failed"}), 401
 
         return fn(*args, **kwargs)
 
@@ -63,10 +63,7 @@ def require_role(*allowed_roles: str):
         @require_auth
         def wrapper(*args, **kwargs):
             if g.role not in allowed_roles:
-                return jsonify({
-                    "error": "Forbidden: insufficient permissions",
-                    "required_roles": list(allowed_roles),
-                }), 403
+                return jsonify({"error": "Forbidden: insufficient permissions"}), 403
             return fn(*args, **kwargs)
         return wrapper
     return decorator

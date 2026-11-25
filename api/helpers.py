@@ -1,6 +1,9 @@
-"""Shared validation and calculation helpers for the College ERP API."""
+"""Shared validation, sanitization, and calculation helpers for the University ERP API."""
 
+import re
 from flask import jsonify
+
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,40}$")
 
 
 def compute_grade(marks_obtained: float, max_marks: float) -> str:
@@ -31,6 +34,21 @@ def require_fields(data: dict, fields: list[str]):
     if missing:
         return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
     return None
+
+
+def safe_error(exc: Exception, default_message: str = "Request could not be completed", status: int = 400):
+    """Return a sanitized error response without leaking internal stack traces or DB schemas."""
+    msg = str(exc)
+    lower = msg.lower()
+    if "duplicate key" in lower or "unique constraint" in lower:
+        return jsonify({"error": "A record with that identifier already exists."}), 409
+    if "violates foreign key" in lower:
+        return jsonify({"error": "Referenced record does not exist or is in use."}), 400
+    if "violates check constraint" in lower:
+        return jsonify({"error": "One or more values are outside the allowed range."}), 400
+    if "permission denied" in lower or "row-level security" in lower:
+        return jsonify({"error": "You do not have permission to perform this action."}), 403
+    return jsonify({"error": default_message}), status
 
 
 def parse_pagination(args) -> tuple[int, int]:

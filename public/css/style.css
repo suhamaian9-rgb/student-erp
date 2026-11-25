@@ -1,46 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
 :root {
-  --erp-sidebar-bg: #1e293b;
-  --erp-sidebar-hover: #334155;
-  --erp-sidebar-active: #2563eb;
-  --erp-body-bg: #f1f5f9;
-  --erp-sidebar-width: 256px;
+  --color-primary: #1E3A5F;
+  --color-primary-dark: #132842;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #2563EB;
+  --color-accent: #A16207;
+  --color-accent-light: #FEF3C7;
+  --color-bg: #F8FAFC;
+  --color-foreground: #0F172A;
+  --color-card: #FFFFFF;
+  --color-muted: #E9EEF5;
+  --color-muted-fg: #475569;
+  --color-border: #CBD5E1;
+  --color-destructive: #DC2626;
+  --font-heading: "EB Garamond", Georgia, serif;
+  --font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --sidebar-width: 264px;
 }
 
 body {
-  background-color: var(--erp-body-bg);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #1e293b;
+  background-color: var(--color-bg);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  line-height: 1.5;
   min-height: 100vh;
 }
 
-/* Login Page */
-.login-wrapper {
+h1, h2, h3, .font-serif {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-secondary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Split-Screen University Login */
+.auth-split {
   min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 992px) {
+  .auth-split {
+    grid-template-columns: 1.05fr 1fr;
+  }
+}
+
+.auth-hero {
+  background: linear-gradient(155deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  color: #FFFFFF;
+  padding: 3rem 3.5rem;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-  padding: 1.5rem;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
 }
 
-.login-card {
-  width: 100%;
-  max-width: 430px;
-  border: none;
+.auth-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+}
+
+.auth-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 520px;
+}
+
+.crest-badge {
+  width: 56px;
+  height: 56px;
   border-radius: 14px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-}
-
-.brand-badge {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
-  background-color: #2563eb;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #FDE68A;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
+}
+
+.auth-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-form-pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background-color: var(--color-bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+.demo-pill {
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.demo-pill:hover {
+  border-color: var(--color-secondary);
+  background: #EFF6FF;
 }
 
 /* Dashboard Layout */
@@ -50,42 +146,59 @@ body {
 }
 
 .erp-sidebar {
-  width: var(--erp-sidebar-width);
-  background-color: var(--erp-sidebar-bg);
-  color: #cbd5e1;
+  width: var(--sidebar-width);
+  background-color: var(--color-primary);
+  color: #CBD5E1;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   transition: transform 0.2s ease-in-out;
   z-index: 1040;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .erp-sidebar .sidebar-header {
-  padding: 1.15rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: #fff;
+  padding: 1.25rem 1.35rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #FFFFFF;
+}
+
+.role-chip {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(253, 230, 138, 0.16);
+  color: #FDE68A;
+  margin-top: 0.25rem;
 }
 
 .erp-sidebar .nav-link {
-  color: #cbd5e1;
-  padding: 0.65rem 1.25rem;
+  color: #CBD5E1;
+  padding: 0.7rem 1.35rem;
+  min-height: 44px;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  font-size: 0.92rem;
-  border-radius: 0;
-  transition: background-color 0.15s, color 0.15s;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .erp-sidebar .nav-link:hover {
-  background-color: var(--erp-sidebar-hover);
-  color: #fff;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
 }
 
 .erp-sidebar .nav-link.active {
-  background-color: var(--erp-sidebar-active);
-  color: #fff;
-  font-weight: 500;
+  background-color: rgba(37, 99, 235, 0.22);
+  border-left-color: #F59E0B;
+  color: #FFFFFF;
+  font-weight: 600;
 }
 
 .erp-main {
@@ -96,9 +209,9 @@ body {
 }
 
 .erp-topbar {
-  background-color: #fff;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 0.75rem 1.5rem;
+  background-color: var(--color-card);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.85rem 1.75rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -107,49 +220,86 @@ body {
   z-index: 1020;
 }
 
+.user-avatar-chip {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--color-muted);
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .erp-content {
-  padding: 1.5rem;
+  padding: 1.75rem;
   flex: 1;
 }
 
-/* Stat Cards */
+/* KPI & Panel Cards */
 .stat-card {
-  border: none;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-primary);
   border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-  transition: transform 0.15s;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  transition: transform 0.15s, box-shadow 0.15s;
 }
 
 .stat-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
+}
+
+.stat-card .fs-4 {
+  font-variant-numeric: tabular-nums;
 }
 
 .stat-icon {
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
 }
 
 .panel-card {
-  border: none;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .table th {
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #475569;
-  background-color: #f8fafc;
+  letter-spacing: 0.04em;
+  color: var(--color-muted-fg);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
 }
 
-/* Responsive Sidebar for Mobile */
+.btn {
+  min-height: 38px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
 @media (max-width: 991.98px) {
   .erp-sidebar {
     position: fixed;
@@ -170,5 +320,8 @@ body {
   }
   .erp-backdrop.show {
     display: block;
+  }
+  .erp-content {
+    padding: 1.15rem;
   }
 }
