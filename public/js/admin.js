@@ -40,10 +40,10 @@
     modal.show();
   }
 
-  function renderTableWithSearch({ title, addLabel, onAdd, exportFn, columns, rows, onAction, searchPlaceholder = "Search..." }) {
+  function renderTableWithSearch({ title, addLabel, onAdd, exportFn, columns, rows, onAction, searchPlaceholder = "Search...", defaultPageSize = 25 }) {
     let query = "";
     let page = 1;
-    const pageSize = 10;
+    let pageSize = defaultPageSize;
 
     main.innerHTML = `
       <div class="card panel-card p-3 p-md-4">
@@ -61,9 +61,14 @@
             <tbody id="tbl-body"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="tbl-info" class="text-muted"></small>
-          <div id="tbl-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="tbl-page-size" class="form-select form-select-sm" style="width: auto;" aria-label="Rows per page">
+              ${ERP.pageSizeOptions(pageSize, [10, 25, 50, 100, 250])}
+            </select>
+            <div id="tbl-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
@@ -102,6 +107,12 @@
       document.getElementById("pg-prev").onclick = () => { page--; draw(); };
       document.getElementById("pg-next").onclick = () => { page++; draw(); };
     }
+
+    document.getElementById("tbl-page-size").addEventListener("change", (e) => {
+      pageSize = Number(e.target.value) || 25;
+      page = 1;
+      draw();
+    });
 
     document.getElementById("tbl-search").addEventListener("input", (e) => {
       query = e.target.value;
@@ -237,7 +248,13 @@
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
         if (b.dataset.del) {
-          if (!confirm("Delete this department?")) return;
+          const item = rows.find((x) => x.id == b.dataset.del);
+          const ok = await ERP.confirmAction({
+            title: "Delete Department",
+            message: "Are you sure you want to delete this department?",
+            detail: item ? `${item.code} — ${item.name}` : "",
+          });
+          if (!ok) return;
           try {
             await ERP.api(`/api/admin/departments?id=${b.dataset.del}`, { method: "DELETE" });
             ERP.showToast("Department deleted");
@@ -307,7 +324,13 @@
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
         if (b.dataset.del) {
-          if (!confirm("Delete this course?")) return;
+          const item = rows.find((x) => x.id == b.dataset.del);
+          const ok = await ERP.confirmAction({
+            title: "Delete Course",
+            message: "Are you sure you want to delete this course?",
+            detail: item ? `${item.code} — ${item.name}` : "",
+          });
+          if (!ok) return;
           try {
             await ERP.api(`/api/admin/courses?id=${b.dataset.del}`, { method: "DELETE" });
             ERP.showToast("Course deleted");
@@ -434,13 +457,25 @@
     };
 
     main.querySelectorAll("[data-del-sess]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this session?")) return;
-      try { await ERP.api(`/api/admin/sessions?id=${b.dataset.delSess}`, { method: "DELETE" }); loadSessions(); }
+      const item = sessions.find((x) => x.id == b.dataset.delSess);
+      const ok = await ERP.confirmAction({
+        title: "Delete Academic Session",
+        message: "Are you sure you want to delete this academic session?",
+        detail: item ? `${item.name} (${item.start_date} to ${item.end_date})` : "",
+      });
+      if (!ok) return;
+      try { await ERP.api(`/api/admin/sessions?id=${b.dataset.delSess}`, { method: "DELETE" }); ERP.showToast("Session deleted"); loadSessions(); }
       catch (err) { ERP.showToast(err.message, "danger"); }
     }));
     main.querySelectorAll("[data-del-sem]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this semester?")) return;
-      try { await ERP.api(`/api/admin/semesters?id=${b.dataset.delSem}`, { method: "DELETE" }); loadSessions(); }
+      const item = semesters.find((x) => x.id == b.dataset.delSem);
+      const ok = await ERP.confirmAction({
+        title: "Delete Semester",
+        message: "Are you sure you want to delete this semester?",
+        detail: item ? `${item.name} — ${item.academic_sessions?.name || ""}` : "",
+      });
+      if (!ok) return;
+      try { await ERP.api(`/api/admin/semesters?id=${b.dataset.delSem}`, { method: "DELETE" }); ERP.showToast("Semester deleted"); loadSessions(); }
       catch (err) { ERP.showToast(err.message, "danger"); }
     }));
   }
@@ -514,8 +549,14 @@
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
         if (b.dataset.del) {
-          if (!confirm("Delete this subject?")) return;
-          try { await ERP.api(`/api/admin/subjects?id=${b.dataset.del}`, { method: "DELETE" }); loadSubjects(); }
+          const item = rows.find((x) => x.id == b.dataset.del);
+          const ok = await ERP.confirmAction({
+            title: "Delete Subject",
+            message: "Are you sure you want to delete this subject?",
+            detail: item ? `${item.code} — ${item.name}` : "",
+          });
+          if (!ok) return;
+          try { await ERP.api(`/api/admin/subjects?id=${b.dataset.del}`, { method: "DELETE" }); ERP.showToast("Subject deleted"); loadSubjects(); }
           catch (err) { ERP.showToast(err.message, "danger"); }
         }
       },
@@ -611,7 +652,15 @@
       ],
       onAction: async (b) => {
         if (b.dataset.del) {
-          if (!confirm("Remove this enrollment?")) return;
+          const item = rows.find((x) => x.id == b.dataset.del);
+          const studName = `${item?.students?.profiles?.first_name || ""} ${item?.students?.profiles?.last_name || ""}`.trim();
+          const ok = await ERP.confirmAction({
+            title: "Remove Enrollment",
+            message: "Are you sure you want to remove this student's enrollment?",
+            detail: item ? `${item.students?.roll_number || ""} (${studName}) — ${item.subjects?.code || ""} ${item.subjects?.name || ""}`.trim() : "",
+            confirmText: "Yes, Remove",
+          });
+          if (!ok) return;
           try {
             await ERP.api(`/api/admin/enrollments?id=${b.dataset.del}`, { method: "DELETE" });
             ERP.showToast("Enrollment removed");
@@ -690,8 +739,14 @@
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
         if (b.dataset.del) {
-          if (!confirm("Delete this teacher account?")) return;
-          try { await ERP.api(`/api/admin/teachers?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadTeachers(); }
+          const item = rows.find((x) => x.profile_id == b.dataset.del);
+          const ok = await ERP.confirmAction({
+            title: "Delete Teacher Account",
+            message: "Are you sure you want to permanently delete this teacher account?",
+            detail: item ? `${item.employee_id} — ${item.profiles?.first_name || ""} ${item.profiles?.last_name || ""}`.trim() : "",
+          });
+          if (!ok) return;
+          try { await ERP.api(`/api/admin/teachers?profile_id=${b.dataset.del}`, { method: "DELETE" }); ERP.showToast("Teacher deleted"); loadTeachers(); }
           catch (err) { ERP.showToast(err.message, "danger"); }
         }
       },
@@ -782,8 +837,14 @@
       onAction: async (b) => {
         if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
         if (b.dataset.del) {
-          if (!confirm("Delete this student account?")) return;
-          try { await ERP.api(`/api/admin/students?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadStudents(); }
+          const item = rows.find((x) => x.profile_id == b.dataset.del);
+          const ok = await ERP.confirmAction({
+            title: "Delete Student Account",
+            message: "Are you sure you want to permanently delete this student account and all linked records?",
+            detail: item ? `${item.roll_number} — ${item.profiles?.first_name || ""} ${item.profiles?.last_name || ""}`.trim() : "",
+          });
+          if (!ok) return;
+          try { await ERP.api(`/api/admin/students?profile_id=${b.dataset.del}`, { method: "DELETE" }); ERP.showToast("Student deleted"); loadStudents(); }
           catch (err) { ERP.showToast(err.message, "danger"); }
         }
       },
@@ -821,7 +882,7 @@
         moreWrap.innerHTML = "";
         return;
       }
-      const BATCH = 10;
+      const BATCH = 25;
       let rendered = 0;
       box.innerHTML = "";
 
@@ -928,18 +989,22 @@
             <tbody id="res-tbody"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="res-info" class="text-muted"></small>
-          <div id="res-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="res-page-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
+            <div id="res-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
     let resQuery = "";
     let resPage = 1;
+    let resPageSize = 25;
     const drawResults = () => {
       const q = resQuery.toLowerCase();
       const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
-      const paged = ERP.paginate(filtered, resPage, 10);
+      const paged = ERP.paginate(filtered, resPage, resPageSize);
       document.getElementById("res-tbody").innerHTML = paged.rows.map((r) => `
         <tr>
           <td>${esc(r.students?.roll_number)}</td>
@@ -962,7 +1027,13 @@
 
       main.querySelectorAll("[data-edit-res]").forEach((b) => (b.onclick = () => openResultModal(results.find((x) => x.id == b.dataset.editRes))));
       main.querySelectorAll("[data-del-res]").forEach((b) => (b.onclick = async () => {
-        if (!confirm("Delete this result?")) return;
+        const item = results.find((x) => x.id == b.dataset.delRes);
+        const ok = await ERP.confirmAction({
+          title: "Delete Examination Result",
+          message: "Are you sure you want to delete this examination result?",
+          detail: item ? `${item.students?.roll_number || ""} — ${item.subjects?.name || ""} (${item.examinations?.name || ""})` : "",
+        });
+        if (!ok) return;
         try {
           await ERP.api(`/api/admin/results?id=${b.dataset.delRes}`, { method: "DELETE" });
           ERP.showToast("Result deleted");
@@ -971,6 +1042,7 @@
       }));
     };
     drawResults();
+    document.getElementById("res-page-size").onchange = (e) => { resPageSize = Number(e.target.value) || 25; resPage = 1; drawResults(); };
     document.getElementById("res-search").oninput = (e) => { resQuery = e.target.value; resPage = 1; drawResults(); };
 
     const openExamModal = (item = null) => {
@@ -1065,8 +1137,14 @@
 
     main.querySelectorAll("[data-edit-exam]").forEach((b) => (b.onclick = () => openExamModal(exams.find((x) => x.id == b.dataset.editExam))));
     main.querySelectorAll("[data-del-exam]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this examination?")) return;
-      try { await ERP.api(`/api/admin/examinations?id=${b.dataset.delExam}`, { method: "DELETE" }); loadResults(); }
+      const item = exams.find((x) => x.id == b.dataset.delExam);
+      const ok = await ERP.confirmAction({
+        title: "Delete Examination",
+        message: "Are you sure you want to delete this examination?",
+        detail: item ? `${item.name} (${item.exam_type || ""})` : "",
+      });
+      if (!ok) return;
+      try { await ERP.api(`/api/admin/examinations?id=${b.dataset.delExam}`, { method: "DELETE" }); ERP.showToast("Examination deleted"); loadResults(); }
       catch (err) { ERP.showToast(err.message, "danger"); }
     }));
   }

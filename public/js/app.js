@@ -321,7 +321,7 @@ window.ERP = (() => {
         return;
       }
       listEl.innerHTML = items
-        .slice(0, 8)
+        .slice(0, 15)
         .map(
           (n) => `
           <div class="dropdown-item py-2 border-bottom text-wrap ${n.is_read ? "opacity-75" : "fw-semibold"}"
@@ -344,7 +344,7 @@ window.ERP = (() => {
     }
   }
 
-  function paginate(items, page = 1, pageSize = 10) {
+  function paginate(items, page = 1, pageSize = 25) {
     const total = items.length;
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const safePage = Math.min(Math.max(1, page), totalPages);
@@ -355,6 +355,94 @@ window.ERP = (() => {
       totalPages,
       total,
     };
+  }
+
+  function pageSizeOptions(selected = 25, sizes = [10, 25, 50, 100]) {
+    return sizes
+      .map((n) => `<option value="${n}" ${Number(selected) === n ? "selected" : ""}>${n} / page</option>`)
+      .join("");
+  }
+
+  function confirmAction({
+    title = "Confirm Action",
+    message = "Are you sure you want to proceed?",
+    detail = "",
+    confirmText = "Yes, Delete",
+    variant = "danger",
+  } = {}) {
+    return new Promise((resolve) => {
+      if (typeof bootstrap === "undefined" || !bootstrap.Modal) {
+        resolve(window.confirm([message, detail].filter(Boolean).join("\n")));
+        return;
+      }
+      let modalEl = document.getElementById("erpConfirmModal");
+      if (!modalEl) {
+        modalEl = document.createElement("div");
+        modalEl.id = "erpConfirmModal";
+        modalEl.className = "modal fade";
+        modalEl.tabIndex = -1;
+        modalEl.setAttribute("aria-hidden", "true");
+        modalEl.innerHTML = `
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+              <div class="modal-header border-0 pb-1">
+                <h5 class="modal-title fw-bold d-flex align-items-center gap-2" id="erp-confirm-title"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body pt-2">
+                <p class="mb-2" id="erp-confirm-msg"></p>
+                <div class="alert alert-light border small fw-semibold py-2 px-3 mb-2 d-none" id="erp-confirm-detail"></div>
+                <div class="small text-muted">This action cannot be undone.</div>
+              </div>
+              <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="erp-confirm-cancel">Cancel</button>
+                <button type="button" class="btn btn-danger" id="erp-confirm-ok"></button>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(modalEl);
+      }
+
+      const titleEl = modalEl.querySelector("#erp-confirm-title");
+      const msgEl = modalEl.querySelector("#erp-confirm-msg");
+      const detailEl = modalEl.querySelector("#erp-confirm-detail");
+      const cancelBtn = modalEl.querySelector("#erp-confirm-cancel");
+      const okBtn = modalEl.querySelector("#erp-confirm-ok");
+
+      titleEl.innerHTML = `<i class="bi bi-exclamation-triangle-fill text-${escapeHtml(variant)}"></i><span>${escapeHtml(title)}</span>`;
+      msgEl.textContent = message;
+      if (detail) {
+        detailEl.textContent = detail;
+        detailEl.classList.remove("d-none");
+      } else {
+        detailEl.textContent = "";
+        detailEl.classList.add("d-none");
+      }
+      okBtn.className = `btn btn-${variant}`;
+      okBtn.textContent = confirmText;
+
+      const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        okBtn.removeEventListener("click", onOk);
+        modalEl.removeEventListener("hidden.bs.modal", onHidden);
+        modalEl.removeEventListener("shown.bs.modal", onShown);
+        resolve(result);
+      };
+      const onOk = () => {
+        finish(true);
+        bsModal.hide();
+      };
+      const onHidden = () => finish(false);
+      const onShown = () => cancelBtn.focus();
+
+      okBtn.addEventListener("click", onOk);
+      modalEl.addEventListener("hidden.bs.modal", onHidden);
+      modalEl.addEventListener("shown.bs.modal", onShown);
+      bsModal.show();
+    });
   }
 
   function exportCsv(filename, headers, rows) {
@@ -399,6 +487,8 @@ window.ERP = (() => {
     logout,
     renderShell,
     paginate,
+    pageSizeOptions,
+    confirmAction,
     exportCsv,
     statusBadge,
     getUserData: () => currentUserData,

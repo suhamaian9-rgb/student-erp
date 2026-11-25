@@ -106,17 +106,21 @@
             <tbody id="t-stud-body"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="t-stud-info" class="text-muted"></small>
-          <div id="t-stud-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="t-stud-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
+            <div id="t-stud-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
     let q = "";
     let page = 1;
+    let pageSize = 25;
     const draw = () => {
       const filtered = q ? students.filter((s) => JSON.stringify(s).toLowerCase().includes(q.toLowerCase())) : students;
-      const paged = ERP.paginate(filtered, page, 10);
+      const paged = ERP.paginate(filtered, page, pageSize);
       document.getElementById("t-stud-body").innerHTML = paged.rows.map((s) => `
         <tr>
           <td><span class="badge bg-dark">${esc(s.roll_number)}</span></td>
@@ -133,6 +137,7 @@
       document.getElementById("ts-next").onclick = () => { page++; draw(); };
     };
     draw();
+    document.getElementById("t-stud-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; draw(); };
     document.getElementById("stud-search").oninput = (e) => { q = e.target.value; page = 1; draw(); };
   }
 
@@ -348,18 +353,22 @@
             <tbody id="tr-tbody"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="tr-info" class="text-muted"></small>
-          <div id="tr-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="tr-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
+            <div id="tr-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
     let trQuery = "";
     let trPage = 1;
+    let trPageSize = 25;
     const drawResults = () => {
       const q = trQuery.toLowerCase();
       const filtered = q ? results.filter((r) => JSON.stringify(r).toLowerCase().includes(q)) : results;
-      const paged = ERP.paginate(filtered, trPage, 10);
+      const paged = ERP.paginate(filtered, trPage, trPageSize);
       document.getElementById("tr-tbody").innerHTML = paged.rows.map((r) => `
         <tr>
           <td>${esc(r.students?.roll_number)}</td>
@@ -377,6 +386,7 @@
       document.getElementById("tr-next").onclick = () => { trPage++; drawResults(); };
     };
     drawResults();
+    document.getElementById("tr-size").onchange = (e) => { trPageSize = Number(e.target.value) || 25; trPage = 1; drawResults(); };
     document.getElementById("tr-search").oninput = (e) => { trQuery = e.target.value; trPage = 1; drawResults(); };
     document.getElementById("tr-export").onclick = () => {
       ERP.exportCsv(

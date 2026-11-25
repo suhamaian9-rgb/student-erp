@@ -466,7 +466,7 @@ def view_attendance():
             query = query.eq("subject_id", subject_id)
         if session_id:
             query = query.eq("session_id", session_id)
-        resp = query.order("attendance_date", desc=True).limit(50).execute()
+        resp = query.order("attendance_date", desc=True).limit(100).execute()
         return jsonify(resp.data or []), 200
     except Exception as exc:
         return safe_error(exc)

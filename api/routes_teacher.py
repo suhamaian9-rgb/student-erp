@@ -164,7 +164,7 @@ def manage_attendance():
                 if not sub_ids:
                     return jsonify([]), 200
                 query = query.in_("subject_id", sub_ids)
-            resp = query.order("attendance_date", desc=True).limit(50).execute()
+            resp = query.order("attendance_date", desc=True).limit(100).execute()
             return jsonify(resp.data or []), 200
 
         data = request.get_json(silent=True) or {}

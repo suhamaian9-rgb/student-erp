@@ -165,15 +165,19 @@
             <tbody id="s-att-body"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="s-att-info" class="text-muted"></small>
-          <div id="s-att-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="sa-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
+            <div id="s-att-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
     let page = 1;
+    let pageSize = 25;
     const drawAtt = () => {
-      const paged = ERP.paginate(data.records, page, 12);
+      const paged = ERP.paginate(data.records, page, pageSize);
       document.getElementById("s-att-body").innerHTML = paged.rows.map((r) => `
         <tr>
           <td>${esc(r.attendance_sessions?.attendance_date)}</td>
@@ -190,6 +194,7 @@
       document.getElementById("sa-next").onclick = () => { page++; drawAtt(); };
     };
     drawAtt();
+    document.getElementById("sa-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; drawAtt(); };
 
     document.getElementById("exp-att").onclick = () => {
       ERP.exportCsv(
@@ -215,15 +220,19 @@
             <tbody id="s-res-body"></tbody>
           </table>
         </div>
-        <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
           <small id="s-res-info" class="text-muted"></small>
-          <div id="s-res-pager" class="btn-group btn-group-sm"></div>
+          <div class="d-flex align-items-center gap-2">
+            <select id="sr-size" class="form-select form-select-sm" style="width:auto;" aria-label="Rows per page">${ERP.pageSizeOptions(25)}</select>
+            <div id="s-res-pager" class="btn-group btn-group-sm"></div>
+          </div>
         </div>
       </div>`;
 
     let page = 1;
+    let pageSize = 25;
     const drawRes = () => {
-      const paged = ERP.paginate(rows, page, 12);
+      const paged = ERP.paginate(rows, page, pageSize);
       document.getElementById("s-res-body").innerHTML = paged.rows.map((r) => `
         <tr>
           <td><strong>${esc(r.examinations?.name)}</strong></td>
@@ -240,6 +249,7 @@
       document.getElementById("sr-next").onclick = () => { page++; drawRes(); };
     };
     drawRes();
+    document.getElementById("sr-size").onchange = (e) => { pageSize = Number(e.target.value) || 25; page = 1; drawRes(); };
 
     document.getElementById("exp-res").onclick = () => {
       ERP.exportCsv(
