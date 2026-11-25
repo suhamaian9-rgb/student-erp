@@ -501,8 +501,9 @@
     const showForm = (item = null) => {
       openModal(item ? "Edit Teacher" : "Add Teacher", `
         <form id="teach-form" class="row g-3">
-          <div class="col-md-6"><label class="form-label">First Name</label><input class="form-control" id="t-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
-          <div class="col-md-6"><label class="form-label">Last Name</label><input class="form-control" id="t-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">First Name</label><input class="form-control" id="t-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">Last Name</label><input class="form-control" id="t-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">Username</label><input class="form-control" id="t-user" value="${esc(item?.profiles?.username || "")}" placeholder="e.g. prof-smith"></div>
           ${!item ? `
           <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="t-email" required></div>
           <div class="col-md-6"><label class="form-label">Password</label><input type="password" class="form-control" id="t-pw" minlength="6" required></div>` : ""}
@@ -521,6 +522,7 @@
             profile_id: item?.profile_id,
             first_name: document.getElementById("t-fn").value.trim(),
             last_name: document.getElementById("t-ln").value.trim(),
+            username: document.getElementById("t-user").value.trim(),
             employee_id: document.getElementById("t-emp").value.trim(),
             department_id: document.getElementById("t-dept").value ? Number(document.getElementById("t-dept").value) : null,
             qualification: document.getElementById("t-qual").value.trim(),
@@ -576,8 +578,9 @@
     const showForm = (item = null) => {
       openModal(item ? "Edit Student" : "Add Student", `
         <form id="stud-form" class="row g-3">
-          <div class="col-md-6"><label class="form-label">First Name</label><input class="form-control" id="st-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
-          <div class="col-md-6"><label class="form-label">Last Name</label><input class="form-control" id="st-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">First Name</label><input class="form-control" id="st-fn" value="${esc(item?.profiles?.first_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">Last Name</label><input class="form-control" id="st-ln" value="${esc(item?.profiles?.last_name || "")}" required></div>
+          <div class="col-md-4"><label class="form-label">Username</label><input class="form-control" id="st-user" value="${esc(item?.profiles?.username || "")}" placeholder="e.g. john-doe"></div>
           ${!item ? `
           <div class="col-md-6"><label class="form-label">Email</label><input type="email" class="form-control" id="st-email" required></div>
           <div class="col-md-6"><label class="form-label">Password</label><input type="password" class="form-control" id="st-pw" minlength="6" required></div>` : ""}
@@ -601,6 +604,7 @@
             profile_id: item?.profile_id,
             first_name: document.getElementById("st-fn").value.trim(),
             last_name: document.getElementById("st-ln").value.trim(),
+            username: document.getElementById("st-user").value.trim(),
             roll_number: document.getElementById("st-roll").value.trim(),
             course_id: document.getElementById("st-course").value ? Number(document.getElementById("st-course").value) : null,
             session_id: document.getElementById("st-sess").value ? Number(document.getElementById("st-sess").value) : null,

@@ -243,7 +243,7 @@ def manage_teachers():
         if request.method == "GET":
             resp = (
                 g.db.table("teachers")
-                .select("*, profiles(id, email, first_name, last_name, gender, phone, address, is_active), departments(id, name, code)")
+                .select("*, profiles(id, email, username, first_name, last_name, gender, phone, address, is_active), departments(id, name, code)")
                 .order("id", desc=True)
                 .execute()
             )
@@ -264,6 +264,7 @@ def manage_teachers():
                 gender=data.get("gender", "M"),
                 phone=data.get("phone", ""),
                 address=data.get("address", ""),
+                username=data.get("username"),
             )
             teacher_payload = {
                 "profile_id": profile_id,
@@ -280,9 +281,12 @@ def manage_teachers():
                 return err
             profile_updates = {
                 k: data[k]
-                for k in ["first_name", "last_name", "gender", "phone", "address", "is_active"]
+                for k in ["first_name", "last_name", "username", "gender", "phone", "address", "is_active"]
                 if k in data
             }
+            if "username" in profile_updates:
+                u = str(profile_updates["username"] or "").strip().lower()
+                profile_updates["username"] = u if u else None
             if profile_updates:
                 g.db.table("profiles").update(profile_updates).eq("id", data["profile_id"]).execute()
             teacher_updates = {
@@ -315,7 +319,7 @@ def manage_students():
         if request.method == "GET":
             resp = (
                 g.db.table("students")
-                .select("*, profiles(id, email, first_name, last_name, gender, phone, address, is_active), courses(id, name, code), academic_sessions(id, name), semesters(id, name)")
+                .select("*, profiles(id, email, username, first_name, last_name, gender, phone, address, is_active), courses(id, name, code), academic_sessions(id, name), semesters(id, name)")
                 .order("id", desc=True)
                 .execute()
             )
@@ -336,6 +340,7 @@ def manage_students():
                 gender=data.get("gender", "M"),
                 phone=data.get("phone", ""),
                 address=data.get("address", ""),
+                username=data.get("username"),
             )
             student_payload = {
                 "profile_id": profile_id,
@@ -353,9 +358,12 @@ def manage_students():
                 return err
             profile_updates = {
                 k: data[k]
-                for k in ["first_name", "last_name", "gender", "phone", "address", "is_active"]
+                for k in ["first_name", "last_name", "username", "gender", "phone", "address", "is_active"]
                 if k in data
             }
+            if "username" in profile_updates:
+                u = str(profile_updates["username"] or "").strip().lower()
+                profile_updates["username"] = u if u else None
             if profile_updates:
                 g.db.table("profiles").update(profile_updates).eq("id", data["profile_id"]).execute()
             student_updates = {
