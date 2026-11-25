@@ -40,7 +40,7 @@
     modal.show();
   }
 
-  function renderTableWithSearch({ title, addLabel, onAdd, exportFn, columns, rows, searchPlaceholder = "Search..." }) {
+  function renderTableWithSearch({ title, addLabel, onAdd, exportFn, columns, rows, onAction, searchPlaceholder = "Search..." }) {
     let query = "";
     let page = 1;
     const pageSize = 10;
@@ -70,6 +70,14 @@
     if (onAdd) document.getElementById("tbl-add").onclick = onAdd;
     if (exportFn) document.getElementById("tbl-export").onclick = () => exportFn(getFiltered());
 
+    const tbody = document.getElementById("tbl-body");
+    if (onAction) {
+      tbody.addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (btn && tbody.contains(btn)) onAction(btn);
+      });
+    }
+
     function getFiltered() {
       if (!query) return rows;
       const q = query.toLowerCase();
@@ -79,7 +87,6 @@
     function draw() {
       const filtered = getFiltered();
       const paged = ERP.paginate(filtered, page, pageSize);
-      const tbody = document.getElementById("tbl-body");
       if (paged.rows.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${columns.length}" class="text-center text-muted py-4">No records found</td></tr>`;
       } else {
@@ -227,17 +234,18 @@
             <button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Delete</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.del) {
+          if (!confirm("Delete this department?")) return;
+          try {
+            await ERP.api(`/api/admin/departments?id=${b.dataset.del}`, { method: "DELETE" });
+            ERP.showToast("Department deleted");
+            loadDepartments();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-
-    main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => showForm(rows.find((x) => x.id == b.dataset.edit))));
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this department?")) return;
-      try {
-        await ERP.api(`/api/admin/departments?id=${b.dataset.del}`, { method: "DELETE" });
-        ERP.showToast("Department deleted");
-        loadDepartments();
-      } catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 3. COURSES
@@ -296,16 +304,18 @@
             <button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Delete</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.del) {
+          if (!confirm("Delete this course?")) return;
+          try {
+            await ERP.api(`/api/admin/courses?id=${b.dataset.del}`, { method: "DELETE" });
+            ERP.showToast("Course deleted");
+            loadCourses();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-    main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => showForm(rows.find((x) => x.id == b.dataset.edit))));
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this course?")) return;
-      try {
-        await ERP.api(`/api/admin/courses?id=${b.dataset.del}`, { method: "DELETE" });
-        ERP.showToast("Course deleted");
-        loadCourses();
-      } catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 4. SESSIONS & SEMESTERS
@@ -501,13 +511,15 @@
             <button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Delete</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.del) {
+          if (!confirm("Delete this subject?")) return;
+          try { await ERP.api(`/api/admin/subjects?id=${b.dataset.del}`, { method: "DELETE" }); loadSubjects(); }
+          catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-    main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => showForm(rows.find((x) => x.id == b.dataset.edit))));
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this subject?")) return;
-      try { await ERP.api(`/api/admin/subjects?id=${b.dataset.del}`, { method: "DELETE" }); loadSubjects(); }
-      catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 5b. ENROLLMENTS
@@ -585,15 +597,17 @@
           render: (r) => `<button class="btn btn-sm btn-outline-danger" data-del="${r.id}">Remove</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.del) {
+          if (!confirm("Remove this enrollment?")) return;
+          try {
+            await ERP.api(`/api/admin/enrollments?id=${b.dataset.del}`, { method: "DELETE" });
+            ERP.showToast("Enrollment removed");
+            loadEnrollments();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Remove this enrollment?")) return;
-      try {
-        await ERP.api(`/api/admin/enrollments?id=${b.dataset.del}`, { method: "DELETE" });
-        ERP.showToast("Enrollment removed");
-        loadEnrollments();
-      } catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 6. TEACHERS
@@ -661,13 +675,15 @@
             <button class="btn btn-sm btn-outline-danger" data-del="${r.profile_id}">Delete</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.del) {
+          if (!confirm("Delete this teacher account?")) return;
+          try { await ERP.api(`/api/admin/teachers?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadTeachers(); }
+          catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-    main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => showForm(rows.find((x) => x.id == b.dataset.edit))));
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this teacher account?")) return;
-      try { await ERP.api(`/api/admin/teachers?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadTeachers(); }
-      catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 7. STUDENTS
@@ -751,13 +767,15 @@
             <button class="btn btn-sm btn-outline-danger" data-del="${r.profile_id}">Delete</button>`,
         },
       ],
+      onAction: async (b) => {
+        if (b.dataset.edit) return showForm(rows.find((x) => x.id == b.dataset.edit));
+        if (b.dataset.del) {
+          if (!confirm("Delete this student account?")) return;
+          try { await ERP.api(`/api/admin/students?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadStudents(); }
+          catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
     });
-    main.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => showForm(rows.find((x) => x.id == b.dataset.edit))));
-    main.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
-      if (!confirm("Delete this student account?")) return;
-      try { await ERP.api(`/api/admin/students?profile_id=${b.dataset.del}`, { method: "DELETE" }); loadStudents(); }
-      catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 8. ATTENDANCE VIEW (lazy incremental session rendering)
@@ -1061,18 +1079,19 @@
               : `<small class="text-muted">${esc(r.review_note || "Reviewed")}</small>`,
         },
       ],
+      onAction: async (b) => {
+        if (!b.dataset.lv) return;
+        const note = prompt(`Optional note for ${b.dataset.st}:`, "") ?? "";
+        try {
+          await ERP.api("/api/admin/leaves", {
+            method: "PATCH",
+            body: JSON.stringify({ id: Number(b.dataset.lv), status: b.dataset.st, review_note: note }),
+          });
+          ERP.showToast(`Leave ${b.dataset.st}!`);
+          loadLeaves();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      },
     });
-    main.querySelectorAll("[data-lv]").forEach((b) => (b.onclick = async () => {
-      const note = prompt(`Optional note for ${b.dataset.st}:`, "") ?? "";
-      try {
-        await ERP.api("/api/admin/leaves", {
-          method: "PATCH",
-          body: JSON.stringify({ id: Number(b.dataset.lv), status: b.dataset.st, review_note: note }),
-        });
-        ERP.showToast(`Leave ${b.dataset.st}!`);
-        loadLeaves();
-      } catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 11. FEEDBACK
@@ -1088,16 +1107,17 @@
         { label: "Reply", render: (r) => r.reply ? `<span class="text-success">${esc(r.reply)}</span>` : `<span class="text-muted">No reply yet</span>` },
         { label: "Action", render: (r) => `<button class="btn btn-sm btn-outline-primary" data-fb="${r.id}">Reply</button>` },
       ],
+      onAction: async (b) => {
+        if (!b.dataset.fb) return;
+        const reply = prompt("Enter reply:");
+        if (!reply) return;
+        try {
+          await ERP.api("/api/admin/feedback", { method: "PATCH", body: JSON.stringify({ id: Number(b.dataset.fb), reply }) });
+          ERP.showToast("Reply sent!");
+          loadFeedback();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      },
     });
-    main.querySelectorAll("[data-fb]").forEach((b) => (b.onclick = async () => {
-      const reply = prompt("Enter reply:");
-      if (!reply) return;
-      try {
-        await ERP.api("/api/admin/feedback", { method: "PATCH", body: JSON.stringify({ id: Number(b.dataset.fb), reply }) });
-        ERP.showToast("Reply sent!");
-        loadFeedback();
-      } catch (err) { ERP.showToast(err.message, "danger"); }
-    }));
   }
 
   // 12. SEND NOTICE
