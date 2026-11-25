@@ -17,7 +17,7 @@ from flask import Flask, g, jsonify, make_response, request
 
 load_dotenv()
 
-from api.auth_utils import ACCESS_COOKIE, REFRESH_COOKIE, require_auth, set_auth_cookies  # noqa: E402
+from api.auth_utils import ACCESS_COOKIE, HINT_COOKIE, REFRESH_COOKIE, require_auth, set_auth_cookies  # noqa: E402
 from api.helpers import USERNAME_RE, require_fields  # noqa: E402
 from api.routes_admin import admin_bp  # noqa: E402
 from api.routes_student import student_bp  # noqa: E402
@@ -208,6 +208,7 @@ def logout_user():
     resp = make_response(jsonify({"logged_out": True}), 200)
     resp.delete_cookie(ACCESS_COOKIE, path="/")
     resp.delete_cookie(REFRESH_COOKIE, path="/")
+    resp.delete_cookie(HINT_COOKIE, path="/")
     return resp
 
 

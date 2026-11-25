@@ -92,6 +92,7 @@
   }
 
   (async () => {
+    if (!document.cookie.includes("erp_session_hint=1")) return;
     try {
       const res = await fetch("/api/me", { credentials: "same-origin" });
       if (res.ok) {

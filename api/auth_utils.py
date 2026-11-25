@@ -1,13 +1,18 @@
 """Authentication and role-based authorization decorators for Flask routes."""
 
 from functools import wraps
+import hashlib
 import os
-from flask import g, jsonify, request
+import time
+from flask import current_app, g, jsonify, request
 from api.supabase_client import get_anon_client, get_user_client
 
 ACCESS_COOKIE = "erp_access_token"
 REFRESH_COOKIE = "erp_refresh_token"
+HINT_COOKIE = "erp_session_hint"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+_AUTH_CACHE: dict[str, tuple[float, object, dict]] = {}
+_AUTH_CACHE_TTL = 20.0
 
 
 def is_secure_cookie() -> bool:
@@ -16,7 +21,7 @@ def is_secure_cookie() -> bool:
 
 
 def set_auth_cookies(response, access_token: str, refresh_token: str, remember: bool = True) -> None:
-    """Attach HttpOnly session cookies onto a Flask response."""
+    """Attach HttpOnly session cookies and a non-sensitive UI hint cookie."""
     max_age = COOKIE_MAX_AGE if remember else None
     secure = is_secure_cookie()
     for name, value in ((ACCESS_COOKIE, access_token), (REFRESH_COOKIE, refresh_token)):
@@ -29,6 +34,15 @@ def set_auth_cookies(response, access_token: str, refresh_token: str, remember: 
             max_age=max_age,
             path="/",
         )
+    response.set_cookie(
+        HINT_COOKIE,
+        "1",
+        httponly=False,
+        secure=secure,
+        samesite="Lax",
+        max_age=max_age,
+        path="/",
+    )
 
 
 def _extract_token() -> tuple[str | None, bool]:
@@ -78,24 +92,40 @@ def require_auth(fn):
             return jsonify({"error": "Authentication required"}), 401
 
         try:
-            anon = get_anon_client()
-            token, user, refreshed_session = _resolve_user(anon, token, from_cookie)
-            if not user or not token:
-                return jsonify({"error": "Invalid or expired session"}), 401
+            use_cache = bool(token) and bool(os.environ.get("VERCEL")) and not os.environ.get("PYTEST_CURRENT_TEST")
+            cache_key = hashlib.sha256(token.encode()).hexdigest() if use_cache else ""
+            cached = _AUTH_CACHE.get(cache_key) if use_cache else None
+            if cached and cached[0] > time.monotonic():
+                _, user, profile = cached
+                db = get_user_client(token)
+                refreshed_session = None
+            else:
+                anon = get_anon_client()
+                token, user, refreshed_session = _resolve_user(anon, token, from_cookie)
+                if not user or not token:
+                    return jsonify({"error": "Invalid or expired session"}), 401
 
-            db = get_user_client(token)
-            profile_resp = (
-                db.table("profiles")
-                .select("*")
-                .eq("id", user.id)
-                .single()
-                .execute()
-            )
-            profile = profile_resp.data
-            if not profile:
-                return jsonify({"error": "User profile not found"}), 403
-            if not profile.get("is_active", True):
-                return jsonify({"error": "Account is deactivated"}), 403
+                db = get_user_client(token)
+                profile_resp = (
+                    db.table("profiles")
+                    .select("*")
+                    .eq("id", user.id)
+                    .single()
+                    .execute()
+                )
+                profile = profile_resp.data
+                if not profile:
+                    return jsonify({"error": "User profile not found"}), 403
+                if not profile.get("is_active", True):
+                    return jsonify({"error": "Account is deactivated"}), 403
+                if use_cache:
+                    if len(_AUTH_CACHE) >= 256:
+                        _AUTH_CACHE.clear()
+                    _AUTH_CACHE[cache_key] = (
+                        time.monotonic() + _AUTH_CACHE_TTL,
+                        user,
+                        profile,
+                    )
 
             g.access_token = token
             g.user = user
