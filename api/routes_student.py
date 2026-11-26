@@ -185,16 +185,19 @@ def get_open_attendance_sessions():
             return jsonify([]), 200
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        open_sessions = (
-            g.db.table("attendance_sessions")
-            .select("id, subject_id, session_id, attendance_date, topic, is_open, expires_at, radius_meters, campus_lat, campus_lng, subjects(id, name, code), teachers(id, profiles(first_name, last_name))")
-            .in_("subject_id", subject_ids)
-            .eq("is_open", True)
-            .gt("expires_at", now_iso)
-            .order("expires_at", desc=False)
-            .execute()
-            .data or []
-        )
+        try:
+            open_sessions = (
+                g.db.table("attendance_sessions")
+                .select("id, subject_id, session_id, attendance_date, topic, is_open, expires_at, radius_meters, campus_lat, campus_lng, subjects(id, name, code), teachers(id, profiles(first_name, last_name))")
+                .in_("subject_id", subject_ids)
+                .eq("is_open", True)
+                .gt("expires_at", now_iso)
+                .order("expires_at", desc=False)
+                .execute()
+                .data or []
+            )
+        except Exception:
+            return jsonify([]), 200
         if not open_sessions:
             return jsonify([]), 200
 
