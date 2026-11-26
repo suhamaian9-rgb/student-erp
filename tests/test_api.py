@@ -461,6 +461,7 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
                 "session_id": 1,
                 "is_open": True,
                 "expires_at": "2099-01-01T00:00:00+00:00",
+                "session_code": "A1B2C3",
                 "campus_lat": 22.5791,
                 "campus_lng": 89.9759,
                 "radius_meters": 500,
@@ -473,6 +474,14 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
         json={"attendance_session_id": 99, "confirmed": True, "latitude": 23.8103, "longitude": 90.4125},
     )
     assert far.status_code == 403
+
+    # Check-in via Class Code works even without GPS (e.g. desktop PC)
+    code_ok = client.post(
+        "/api/student/attendance/checkin",
+        json={"attendance_session_id": 99, "confirmed": True, "session_code": "a1b2c3"},
+    )
+    assert code_ok.status_code == 201
+    assert code_ok.get_json()["status"] == "present"
 
     near = client.post(
         "/api/student/attendance/checkin",

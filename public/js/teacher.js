@@ -184,6 +184,7 @@
                 <div>
                   <span class="badge bg-success me-1">OPEN</span>
                   <strong>${esc(os.subjects?.name)}</strong> (${esc(os.subjects?.code)}) &bull; ${esc(os.attendance_date)}
+                  ${os.session_code ? `<span class="badge bg-dark ms-2">Class Code: ${esc(os.session_code)}</span>` : ""}
                   <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)} &bull; Radius: ${os.radius_meters || 500}m</div>
                 </div>
                 <button class="btn btn-danger btn-sm close-live-btn" data-id="${os.id}">Close Link &amp; Auto-Mark Absent</button>

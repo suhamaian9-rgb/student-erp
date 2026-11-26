@@ -156,11 +156,12 @@
                   <div class="small text-muted">Date: ${esc(os.attendance_date)} &bull; Topic: ${esc(os.topic || "Class Session")} &bull; Closes at ${esc(expStr)}</div>
                 </div>
                 ${os.already_marked ? `<span class="badge bg-primary py-2 px-3">Marked: ${esc(os.marked_status)}</span>` : `
-                  <div class="d-flex flex-wrap align-items-center gap-3">
-                    <div class="form-check mb-0">
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <div class="form-check mb-0 me-1">
                       <input class="form-check-input live-att-tick" type="checkbox" id="tick-${os.id}">
                       <label class="form-check-label small fw-medium" for="tick-${os.id}">I am in class</label>
                     </div>
+                    <input type="text" class="form-control form-control-sm text-uppercase live-att-code" id="code-${os.id}" style="width: 145px;" maxlength="10" placeholder="Class Code (if PC)">
                     <button class="btn btn-success btn-sm live-att-submit" data-id="${os.id}" data-loc="${os.requires_location ? "1" : "0"}">Submit Attendance</button>
                   </div>`}
               </div>`;
@@ -219,19 +220,22 @@
       btn.onclick = async () => {
         const sid = Number(btn.dataset.id);
         const tick = document.getElementById(`tick-${sid}`);
+        const codeInput = document.getElementById(`code-${sid}`);
+        const sessionCode = (codeInput?.value || "").trim().toUpperCase();
         if (!tick || !tick.checked) {
           return ERP.showToast("Please tick 'I am in class' first.", "warning");
         }
         const needsLoc = btn.dataset.loc === "1";
         btn.disabled = true;
         btn.textContent = "Verifying...";
-        const submitWithCoords = async (lat, lng) => {
+        const submitCheckin = async (lat, lng) => {
           try {
             await ERP.api("/api/student/attendance/checkin", {
               method: "POST",
               body: JSON.stringify({
                 attendance_session_id: sid,
                 confirmed: true,
+                session_code: sessionCode || null,
                 latitude: lat,
                 longitude: lng,
               }),
@@ -247,18 +251,18 @@
           }
         };
 
-        if (!needsLoc) return submitWithCoords(null, null);
+        if (sessionCode || !needsLoc) return submitCheckin(null, null);
         if (!navigator.geolocation) {
           btn.disabled = false;
           btn.textContent = "Submit Attendance";
-          return ERP.showToast("Location access is required to verify campus attendance.", "danger");
+          return ERP.showToast("Location is unavailable on this device. Enter the Class Code from your teacher.", "warning");
         }
         navigator.geolocation.getCurrentPosition(
-          (pos) => submitWithCoords(pos.coords.latitude, pos.coords.longitude),
+          (pos) => submitCheckin(pos.coords.latitude, pos.coords.longitude),
           () => {
             btn.disabled = false;
             btn.textContent = "Submit Attendance";
-            ERP.showToast("Please allow browser location access to prove you are at the university.", "danger");
+            ERP.showToast("Location is off/denied. Enter the Class Code shown by your teacher.", "warning");
           },
           { enableHighAccuracy: true, timeout: 10000 }
         );
