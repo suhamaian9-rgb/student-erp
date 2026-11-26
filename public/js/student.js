@@ -240,8 +240,8 @@
                 longitude: lng,
               }),
             });
-            ERP.invalidate("/api/student/attendance");
-            ERP.invalidate("/api/student/stats");
+            ERP.invalidateCache("/api/student/attendance");
+            ERP.invalidateCache("/api/student/stats");
             ERP.showToast("Attendance marked Present!");
             loadAttendance(signal);
           } catch (err) {

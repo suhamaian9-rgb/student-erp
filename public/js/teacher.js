@@ -253,7 +253,7 @@
             campus_lng: customLng,
           }),
         });
-        ERP.invalidate("/api/teacher/attendance");
+        ERP.invalidateCache("/api/teacher/attendance");
         ERP.showToast("Live attendance link opened for students!");
         loadTakeAttendance(signal);
       } catch (err) { ERP.showToast(err.message, "danger"); }
@@ -270,7 +270,7 @@
         if (!ok) return;
         try {
           const res = await ERP.api(`/api/teacher/attendance/${btn.dataset.id}/close`, { method: "POST" });
-          ERP.invalidate("/api/teacher/attendance");
+          ERP.invalidateCache("/api/teacher/attendance");
           ERP.showToast(`Closed! ${res.present_count} present, ${res.absent_marked} marked absent.`);
           loadTakeAttendance(signal);
         } catch (err) { ERP.showToast(err.message, "danger"); }
