@@ -413,3 +413,94 @@ def test_security_csrf_csp_idor_and_input_validation(monkeypatch):
         json={"examination_id": 1, "student_id": 1, "subject_id": 200, "marks_obtained": 90, "max_marks": 100},
     )
     assert idor_res.status_code == 403
+
+
+def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
+    from api.helpers import haversine_meters
+
+    assert haversine_meters(22.5791, 89.9759, 22.5791, 89.9759) == 0.0
+    assert 100000 < haversine_meters(22.0, 89.0, 23.0, 89.0) < 120000
+
+    # 1. Teacher opens live attendance session
+    fake_teacher_db, _ = _mock_auth(
+        monkeypatch,
+        role="teacher",
+        tables={
+            "teachers": [{"id": 5, "profile_id": "user-1"}],
+            "subjects": [{"id": 10, "course_id": 1, "teacher_id": 5}],
+            "attendance_sessions": [],
+        },
+    )
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+    open_resp = client.post(
+        "/api/teacher/attendance/open",
+        json={
+            "subject_id": 10,
+            "session_id": 1,
+            "attendance_date": "2026-11-26",
+            "duration_minutes": 15,
+            "campus_lat": 22.5791,
+            "campus_lng": 89.9759,
+            "radius_meters": 500,
+        },
+    )
+    assert open_resp.status_code == 201
+    assert fake_teacher_db.instances["attendance_sessions"].last_upsert[0]["is_open"] is True
+
+    # 2. Student check-in: reject outside campus, accept inside campus
+    _mock_auth(
+        monkeypatch,
+        role="student",
+        tables={
+            "students": [{"id": 7, "profile_id": "user-1", "course_id": 1}],
+            "enrollments": [{"id": 1, "student_id": 7, "subject_id": 10}],
+            "attendance_sessions": [{
+                "id": 99,
+                "subject_id": 10,
+                "session_id": 1,
+                "is_open": True,
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "campus_lat": 22.5791,
+                "campus_lng": 89.9759,
+                "radius_meters": 500,
+            }],
+            "attendance_records": [],
+        },
+    )
+    far = client.post(
+        "/api/student/attendance/checkin",
+        json={"attendance_session_id": 99, "confirmed": True, "latitude": 23.8103, "longitude": 90.4125},
+    )
+    assert far.status_code == 403
+
+    near = client.post(
+        "/api/student/attendance/checkin",
+        json={"attendance_session_id": 99, "confirmed": True, "latitude": 22.5795, "longitude": 89.9762},
+    )
+    assert near.status_code == 201
+    assert near.get_json()["status"] == "present"
+
+    # 3. Teacher closes session and auto-marks remaining students absent
+    fake_close_db, _ = _mock_auth(
+        monkeypatch,
+        role="teacher",
+        tables={
+            "teachers": [{"id": 5, "profile_id": "user-1"}],
+            "attendance_sessions": [{"id": 99, "subject_id": 10, "session_id": 1, "subjects": {"id": 10, "course_id": 1, "teacher_id": 5}}],
+            "enrollments": [
+                {"subject_id": 10, "student_id": 7},
+                {"subject_id": 10, "student_id": 8},
+                {"subject_id": 10, "student_id": 9},
+            ],
+            "attendance_records": [{"attendance_session_id": 99, "student_id": 7, "status": "present"}],
+        },
+    )
+    close_resp = client.post("/api/teacher/attendance/99/close")
+    assert close_resp.status_code == 200
+    body = close_resp.get_json()
+    assert body["present_count"] == 1
+    assert body["absent_marked"] == 2
+    inserted = fake_close_db.instances["attendance_records"]._payload
+    assert len(inserted) == 2
+    assert all(r["status"] == "absent" for r in inserted)

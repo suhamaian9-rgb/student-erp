@@ -116,17 +116,84 @@
     });
   }
 
-  // 3. TAKE ATTENDANCE
+  // 3. TAKE ATTENDANCE (Live Classroom Link + Manual Roster)
   async function loadTakeAttendance(signal) {
-    const [subjects, sessions] = await Promise.all([
+    const [subjects, sessions, allAtt] = await Promise.all([
       ERP.cachedApi("/api/teacher/subjects", { signal }),
       ERP.cachedApi("/api/teacher/sessions", { signal }),
+      ERP.api("/api/teacher/attendance", { signal }),
     ]);
     const today = new Date().toISOString().split("T")[0];
+    const openSessions = (allAtt || []).filter((a) => a.is_open);
 
     main.innerHTML = `
+      <div class="card panel-card p-3 p-md-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <div>
+            <h5 class="fw-bold mb-0">Live Classroom Attendance Link</h5>
+            <div class="small text-muted">Open a timed link so students physically at the university can tick Present from their portal.</div>
+          </div>
+          <button id="refresh-live-att" class="btn btn-outline-secondary btn-sm">Refresh</button>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-3">
+            <label class="form-label">Subject</label>
+            <select id="live-sub" class="form-select">${subjects.map((s) => `<option value="${s.id}">${esc(s.name)} (${esc(s.code)})</option>`).join("")}</select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Session</label>
+            <select id="live-sess" class="form-select">${sessions.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Date</label>
+            <input type="date" id="live-date" class="form-control" value="${today}">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Duration</label>
+            <select id="live-dur" class="form-select">
+              <option value="5">5 mins</option>
+              <option value="10" selected>10 mins</option>
+              <option value="15">15 mins</option>
+              <option value="30">30 mins</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Campus Radius</label>
+            <select id="live-rad" class="form-select">
+              <option value="200">200m (Classroom)</option>
+              <option value="500" selected>500m (Campus)</option>
+              <option value="1000">1000m (Wide)</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <input type="text" id="live-topic" class="form-control" placeholder="Lecture topic (optional)">
+          </div>
+          <div class="col-md-6 d-flex flex-wrap gap-2">
+            <button id="use-my-loc" type="button" class="btn btn-outline-primary btn-sm">Use My Classroom GPS</button>
+            <button id="open-live-btn" type="button" class="btn btn-primary btn-sm">Open Attendance Link</button>
+          </div>
+          <div id="live-loc-status" class="col-12 small text-muted">Using default University Campus coordinates (or click "Use My Classroom GPS").</div>
+        </div>
+
+        <div id="open-sessions-list">
+          ${openSessions.length === 0 ? `<div class="small text-muted">No live attendance links are currently open.</div>` : openSessions.map((os) => {
+            const checkedIn = (os.attendance_records || []).filter((r) => r.status === "present" || r.status === "late").length;
+            const expStr = os.expires_at ? new Date(os.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+            return `
+              <div class="border rounded p-3 mb-2 bg-light d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                  <span class="badge bg-success me-1">OPEN</span>
+                  <strong>${esc(os.subjects?.name)}</strong> (${esc(os.subjects?.code)}) &bull; ${esc(os.attendance_date)}
+                  <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)} &bull; Radius: ${os.radius_meters || 500}m</div>
+                </div>
+                <button class="btn btn-danger btn-sm close-live-btn" data-id="${os.id}">Close Link &amp; Auto-Mark Absent</button>
+              </div>`;
+          }).join("")}
+        </div>
+      </div>
+
       <div class="card panel-card p-3 p-md-4">
-        <h5 class="fw-bold mb-3">Take Attendance</h5>
+        <h5 class="fw-bold mb-3">Manual Attendance Roster</h5>
         <div class="row g-3 mb-3">
           <div class="col-md-4">
             <label class="form-label">Subject</label>
@@ -148,6 +215,66 @@
         <button id="fetch-att-studs" class="btn btn-outline-primary btn-sm mb-3">Load Students</button>
         <div id="att-students-area"></div>
       </div>`;
+
+    let customLat = null;
+    let customLng = null;
+    document.getElementById("use-my-loc").onclick = () => {
+      if (!navigator.geolocation) return ERP.showToast("Geolocation is not supported by this browser", "warning");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          customLat = pos.coords.latitude;
+          customLng = pos.coords.longitude;
+          document.getElementById("live-loc-status").textContent = `Classroom GPS locked (${customLat.toFixed(5)}, ${customLng.toFixed(5)}).`;
+          ERP.showToast("Classroom GPS coordinates captured!");
+        },
+        () => ERP.showToast("Could not get GPS location. Default campus coordinates will be used.", "warning"),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    };
+
+    document.getElementById("refresh-live-att").onclick = () => loadTakeAttendance(signal);
+
+    document.getElementById("open-live-btn").onclick = async () => {
+      const subjectId = document.getElementById("live-sub").value;
+      const sessionId = document.getElementById("live-sess").value;
+      if (!subjectId || !sessionId) return ERP.showToast("Select subject and session", "warning");
+      try {
+        await ERP.api("/api/teacher/attendance/open", {
+          method: "POST",
+          body: JSON.stringify({
+            subject_id: Number(subjectId),
+            session_id: Number(sessionId),
+            attendance_date: document.getElementById("live-date").value,
+            topic: document.getElementById("live-topic").value.trim(),
+            duration_minutes: Number(document.getElementById("live-dur").value),
+            radius_meters: Number(document.getElementById("live-rad").value),
+            campus_lat: customLat,
+            campus_lng: customLng,
+          }),
+        });
+        ERP.invalidate("/api/teacher/attendance");
+        ERP.showToast("Live attendance link opened for students!");
+        loadTakeAttendance(signal);
+      } catch (err) { ERP.showToast(err.message, "danger"); }
+    };
+
+    main.querySelectorAll(".close-live-btn").forEach((btn) => {
+      btn.onclick = async () => {
+        const ok = await ERP.confirmAction({
+          title: "Close Attendance Link",
+          message: "All students who have not checked in will be automatically marked Absent. You can still mark late arrivals as Late in Update Attendance.",
+          confirmLabel: "Close & Mark Absent",
+          confirmClass: "btn-danger",
+        });
+        if (!ok) return;
+        try {
+          const res = await ERP.api(`/api/teacher/attendance/${btn.dataset.id}/close`, { method: "POST" });
+          ERP.invalidate("/api/teacher/attendance");
+          ERP.showToast(`Closed! ${res.present_count} present, ${res.absent_marked} marked absent.`);
+          loadTakeAttendance(signal);
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    });
 
     document.getElementById("fetch-att-studs").onclick = async () => {
       const subjectId = document.getElementById("att-sub").value;

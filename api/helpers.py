@@ -1,11 +1,26 @@
 """Shared validation, sanitization, concurrency, and calculation helpers."""
 
 from concurrent.futures import ThreadPoolExecutor
+import math
+import os
 import re
 from typing import Any, Callable
 from flask import jsonify
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,40}$")
+DEFAULT_CAMPUS_LAT = float(os.environ.get("CAMPUS_LAT", "22.5791"))
+DEFAULT_CAMPUS_LNG = float(os.environ.get("CAMPUS_LNG", "89.9759"))
+
+
+def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return great-circle distance in meters between two WGS84 coordinates."""
+    r = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
+    return 2.0 * r * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
 
 def run_parallel(tasks: dict[str, Callable[[], Any]]) -> dict[str, Any]:

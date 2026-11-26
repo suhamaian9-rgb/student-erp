@@ -130,10 +130,44 @@
     });
   }
 
-  // 3. ATTENDANCE HISTORY
+  // 3. ATTENDANCE HISTORY + LIVE CHECK-IN
   async function loadAttendance(signal) {
-    const data = await ERP.cachedApi("/api/student/attendance", { signal });
+    const [data, openSessions] = await Promise.all([
+      ERP.cachedApi("/api/student/attendance", { signal }),
+      ERP.api("/api/student/attendance/open", { signal }),
+    ]);
     main.innerHTML = `
+      <div class="card panel-card p-3 p-md-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h5 class="fw-bold mb-0">Live Class Attendance</h5>
+            <div class="small text-muted">Tick to confirm you are physically in class when your teacher opens attendance.</div>
+          </div>
+          <button id="refresh-open-att" class="btn btn-outline-secondary btn-sm">Refresh</button>
+        </div>
+        <div id="open-att-box">
+          ${(openSessions || []).length === 0 ? `<div class="small text-muted">No active attendance links right now.</div>` : openSessions.map((os) => {
+            const expStr = os.expires_at ? new Date(os.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+            return `
+              <div class="border rounded p-3 mb-2 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                  <span class="badge bg-success me-1">OPEN</span>
+                  <strong>${esc(os.subjects?.name)}</strong> (${esc(os.subjects?.code)})
+                  <div class="small text-muted">Date: ${esc(os.attendance_date)} &bull; Topic: ${esc(os.topic || "Class Session")} &bull; Closes at ${esc(expStr)}</div>
+                </div>
+                ${os.already_marked ? `<span class="badge bg-primary py-2 px-3">Marked: ${esc(os.marked_status)}</span>` : `
+                  <div class="d-flex flex-wrap align-items-center gap-3">
+                    <div class="form-check mb-0">
+                      <input class="form-check-input live-att-tick" type="checkbox" id="tick-${os.id}">
+                      <label class="form-check-label small fw-medium" for="tick-${os.id}">I am in class</label>
+                    </div>
+                    <button class="btn btn-success btn-sm live-att-submit" data-id="${os.id}" data-loc="${os.requires_location ? "1" : "0"}">Submit Attendance</button>
+                  </div>`}
+              </div>`;
+          }).join("")}
+        </div>
+      </div>
+
       <div class="card panel-card p-3 p-md-4 mb-4">
         <h5 class="fw-bold mb-3">Subject-Wise Attendance Percentage</h5>
         <div class="row g-3">
@@ -178,6 +212,57 @@
         { label: "Remarks", render: (r) => esc(r.remarks || "—") },
       ],
       emptyMessage: "No attendance history yet.",
+    });
+
+    document.getElementById("refresh-open-att").onclick = () => loadAttendance(signal);
+    main.querySelectorAll(".live-att-submit").forEach((btn) => {
+      btn.onclick = async () => {
+        const sid = Number(btn.dataset.id);
+        const tick = document.getElementById(`tick-${sid}`);
+        if (!tick || !tick.checked) {
+          return ERP.showToast("Please tick 'I am in class' first.", "warning");
+        }
+        const needsLoc = btn.dataset.loc === "1";
+        btn.disabled = true;
+        btn.textContent = "Verifying...";
+        const submitWithCoords = async (lat, lng) => {
+          try {
+            await ERP.api("/api/student/attendance/checkin", {
+              method: "POST",
+              body: JSON.stringify({
+                attendance_session_id: sid,
+                confirmed: true,
+                latitude: lat,
+                longitude: lng,
+              }),
+            });
+            ERP.invalidate("/api/student/attendance");
+            ERP.invalidate("/api/student/stats");
+            ERP.showToast("Attendance marked Present!");
+            loadAttendance(signal);
+          } catch (err) {
+            ERP.showToast(err.message, "danger");
+            btn.disabled = false;
+            btn.textContent = "Submit Attendance";
+          }
+        };
+
+        if (!needsLoc) return submitWithCoords(null, null);
+        if (!navigator.geolocation) {
+          btn.disabled = false;
+          btn.textContent = "Submit Attendance";
+          return ERP.showToast("Location access is required to verify campus attendance.", "danger");
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => submitWithCoords(pos.coords.latitude, pos.coords.longitude),
+          () => {
+            btn.disabled = false;
+            btn.textContent = "Submit Attendance";
+            ERP.showToast("Please allow browser location access to prove you are at the university.", "danger");
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      };
     });
   }
 

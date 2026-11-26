@@ -1,8 +1,9 @@
 """Student REST API routes for the College ERP System."""
 
+from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import require_fields, run_parallel, safe_error
+from api.helpers import haversine_meters, require_fields, run_parallel, safe_error
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -162,6 +163,157 @@ def get_attendance():
             by_subject.append(item)
 
         return jsonify({"records": records, "by_subject": by_subject}), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@student_bp.route("/attendance/open", methods=["GET"])
+@require_role("student")
+def get_open_attendance_sessions():
+    """Return currently open live attendance sessions for this student's subjects."""
+    try:
+        student = _get_student_record()
+        if not student:
+            return jsonify([]), 200
+
+        enr_rows = g.db.table("enrollments").select("subject_id").eq("student_id", student["id"]).execute().data or []
+        subject_ids = [r["subject_id"] for r in enr_rows]
+        if not subject_ids and student.get("course_id"):
+            subs = g.db.table("subjects").select("id").eq("course_id", student["course_id"]).execute().data or []
+            subject_ids = [s["id"] for s in subs]
+        if not subject_ids:
+            return jsonify([]), 200
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        open_sessions = (
+            g.db.table("attendance_sessions")
+            .select("id, subject_id, session_id, attendance_date, topic, is_open, expires_at, radius_meters, campus_lat, campus_lng, subjects(id, name, code), teachers(id, profiles(first_name, last_name))")
+            .in_("subject_id", subject_ids)
+            .eq("is_open", True)
+            .gt("expires_at", now_iso)
+            .order("expires_at", desc=False)
+            .execute()
+            .data or []
+        )
+        if not open_sessions:
+            return jsonify([]), 200
+
+        session_ids = [s["id"] for s in open_sessions]
+        recs = (
+            g.db.table("attendance_records")
+            .select("attendance_session_id, status")
+            .eq("student_id", student["id"])
+            .in_("attendance_session_id", session_ids)
+            .execute()
+            .data or []
+        )
+        marked_map = {r["attendance_session_id"]: r["status"] for r in recs}
+
+        result = []
+        for s in open_sessions:
+            result.append({
+                "id": s["id"],
+                "subject_id": s["subject_id"],
+                "attendance_date": s["attendance_date"],
+                "topic": s.get("topic") or "",
+                "expires_at": s["expires_at"],
+                "requires_location": s.get("campus_lat") is not None and s.get("campus_lng") is not None,
+                "radius_meters": s.get("radius_meters") or 500,
+                "subjects": s.get("subjects"),
+                "teachers": s.get("teachers"),
+                "already_marked": s["id"] in marked_map,
+                "marked_status": marked_map.get(s["id"]),
+            })
+        return jsonify(result), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@student_bp.route("/attendance/checkin", methods=["POST"])
+@require_role("student")
+def checkin_live_attendance():
+    """Allow a student to tick present in an open session after verifying campus location."""
+    try:
+        student = _get_student_record()
+        if not student:
+            return jsonify({"error": "Student record not found"}), 404
+
+        data = request.get_json(silent=True) or {}
+        err = require_fields(data, ["attendance_session_id"])
+        if err:
+            return err
+        if not data.get("confirmed"):
+            return jsonify({"error": "Please tick the confirmation checkbox to mark attendance."}), 400
+
+        att_session_id = data["attendance_session_id"]
+        ats = (
+            g.db.table("attendance_sessions")
+            .select("*")
+            .eq("id", att_session_id)
+            .single()
+            .execute()
+            .data
+        )
+        if not ats or not ats.get("is_open"):
+            return jsonify({"error": "This attendance link is closed."}), 400
+
+        expires_at = ats.get("expires_at")
+        if expires_at:
+            exp_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp_dt:
+                return jsonify({"error": "This attendance link has expired."}), 400
+
+        # Verify student is enrolled in this subject (or course fallback)
+        enr = (
+            g.db.table("enrollments")
+            .select("id")
+            .eq("student_id", student["id"])
+            .eq("subject_id", ats["subject_id"])
+            .execute()
+            .data or []
+        )
+        if not enr:
+            subj = g.db.table("subjects").select("course_id").eq("id", ats["subject_id"]).single().execute().data
+            if not subj or subj.get("course_id") != student.get("course_id"):
+                return jsonify({"error": "You are not enrolled in this subject."}), 403
+
+        # Verify physical campus presence via GPS coordinates
+        if ats.get("campus_lat") is not None and ats.get("campus_lng") is not None:
+            if data.get("latitude") is None or data.get("longitude") is None:
+                return jsonify({"error": "Location access is required to verify you are at the university."}), 400
+            try:
+                lat = float(data["latitude"])
+                lng = float(data["longitude"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invalid location coordinates."}), 400
+
+            dist = haversine_meters(lat, lng, float(ats["campus_lat"]), float(ats["campus_lng"]))
+            allowed_m = float(ats.get("radius_meters") or 500)
+            if dist > allowed_m:
+                return jsonify({
+                    "error": f"You must be physically at the university to mark attendance (you are {int(dist)}m away; limit is {int(allowed_m)}m)."
+                }), 403
+
+        existing = (
+            g.db.table("attendance_records")
+            .select("id, status")
+            .eq("attendance_session_id", att_session_id)
+            .eq("student_id", student["id"])
+            .execute()
+            .data or []
+        )
+        if existing:
+            return jsonify({"checked_in": True, "status": existing[0]["status"], "already_marked": True}), 200
+
+        g.db.table("attendance_records").insert({
+            "attendance_session_id": att_session_id,
+            "student_id": student["id"],
+            "status": "present",
+            "remarks": "Self check-in (campus verified)",
+            "updated_by": g.profile["id"],
+        }).execute()
+
+        return jsonify({"checked_in": True, "status": "present"}), 201
     except Exception as exc:
         return safe_error(exc)
 
