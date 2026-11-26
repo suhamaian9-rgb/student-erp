@@ -218,7 +218,7 @@ def get_open_attendance_sessions():
                 "topic": s.get("topic") or "",
                 "expires_at": s["expires_at"],
                 "requires_location": s.get("campus_lat") is not None and s.get("campus_lng") is not None,
-                "radius_meters": s.get("radius_meters") or 500,
+                "radius_meters": s.get("radius_meters") or 50,
                 "subjects": s.get("subjects"),
                 "teachers": s.get("teachers"),
                 "already_marked": s["id"] in marked_map,
@@ -295,7 +295,7 @@ def checkin_live_attendance():
                     return jsonify({"error": "Invalid location coordinates."}), 400
 
                 dist = haversine_meters(lat, lng, float(ats["campus_lat"]), float(ats["campus_lng"]))
-                allowed_m = float(ats.get("radius_meters") or 500)
+                allowed_m = float(ats.get("radius_meters") or 50)
                 if dist > allowed_m:
                     return jsonify({
                         "error": f"Outside campus ({int(dist)}m away; limit {int(allowed_m)}m). Enter your teacher's Class Code if you are in class on a PC."

@@ -319,9 +319,9 @@ def open_live_attendance():
             duration_min = 10
 
         try:
-            radius_m = min(5000, max(50, int(data.get("radius_meters", 500))))
+            radius_m = min(50, max(5, int(data.get("radius_meters", 50))))
         except (TypeError, ValueError):
-            radius_m = 500
+            radius_m = 50
 
         campus_lat = float(data["campus_lat"]) if data.get("campus_lat") is not None else DEFAULT_CAMPUS_LAT
         campus_lng = float(data["campus_lng"]) if data.get("campus_lng") is not None else DEFAULT_CAMPUS_LNG

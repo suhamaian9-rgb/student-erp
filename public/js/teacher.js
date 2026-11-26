@@ -158,11 +158,11 @@
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label">Campus Radius</label>
+            <label class="form-label">Classroom Radius</label>
             <select id="live-rad" class="form-select">
-              <option value="200">200m (Classroom)</option>
-              <option value="500" selected>500m (Campus)</option>
-              <option value="1000">1000m (Wide)</option>
+              <option value="20">20m (Exact Room)</option>
+              <option value="35">35m (Classroom)</option>
+              <option value="50" selected>50m (Max Allowed)</option>
             </select>
           </div>
           <div class="col-md-6">
@@ -185,7 +185,7 @@
                   <span class="badge bg-success me-1">OPEN</span>
                   <strong>${esc(os.subjects?.name)}</strong> (${esc(os.subjects?.code)}) &bull; ${esc(os.attendance_date)}
                   ${os.session_code ? `<span class="badge bg-dark ms-2">Class Code: ${esc(os.session_code)}</span>` : ""}
-                  <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)} &bull; Radius: ${os.radius_meters || 500}m</div>
+                  <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)} &bull; Radius: ${os.radius_meters || 50}m</div>
                 </div>
                 <button class="btn btn-danger btn-sm close-live-btn" data-id="${os.id}">Close Link &amp; Auto-Mark Absent</button>
               </div>`;

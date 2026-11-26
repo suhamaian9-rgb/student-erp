@@ -447,6 +447,7 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
     )
     assert open_resp.status_code == 201
     assert fake_teacher_db.instances["attendance_sessions"].last_upsert[0]["is_open"] is True
+    assert fake_teacher_db.instances["attendance_sessions"].last_upsert[0]["radius_meters"] == 50
 
     # 2. Student check-in: reject outside campus, accept inside campus
     _mock_auth(
@@ -464,7 +465,7 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
                 "session_code": "A1B2C3",
                 "campus_lat": 22.5791,
                 "campus_lng": 89.9759,
-                "radius_meters": 500,
+                "radius_meters": 50,
             }],
             "attendance_records": [],
         },
@@ -485,7 +486,7 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
 
     near = client.post(
         "/api/student/attendance/checkin",
-        json={"attendance_session_id": 99, "confirmed": True, "latitude": 22.5795, "longitude": 89.9762},
+        json={"attendance_session_id": 99, "confirmed": True, "latitude": 22.5792, "longitude": 89.9760},
     )
     assert near.status_code == 201
     assert near.get_json()["status"] == "present"
