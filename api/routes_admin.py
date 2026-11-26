@@ -641,3 +641,68 @@ def send_notification():
         return jsonify({"sent": len(rows)}), 201
     except Exception as exc:
         return safe_error(exc)
+
+
+@admin_bp.route("/fees", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+@require_role("admin")
+def manage_fees():
+    """Create fee invoices, verify student payments, and track due/completed fees."""
+    try:
+        if request.method == "GET":
+            resp = (
+                g.db.table("fee_payments")
+                .select("*, students(id, roll_number, profiles(first_name, last_name, email)), semesters(id, name)")
+                .order("id", desc=True)
+                .execute()
+            )
+            return jsonify(resp.data or []), 200
+
+        data = request.get_json(silent=True) or {}
+
+        if request.method == "POST":
+            err = require_fields(data, ["student_id", "title", "amount", "fee_type"])
+            if err:
+                return err
+            amount = float(data["amount"])
+            if amount <= 0:
+                return jsonify({"error": "Amount must be greater than zero"}), 400
+            fee_type = data["fee_type"]
+            if fee_type not in ("tuition", "transcript", "exam", "retake", "library", "other"):
+                return jsonify({"error": "Invalid fee_type"}), 400
+            payload = {
+                "student_id": int(data["student_id"]),
+                "semester_id": int(data["semester_id"]) if data.get("semester_id") else None,
+                "fee_type": fee_type,
+                "title": str(data["title"]).strip(),
+                "amount": amount,
+                "due_date": data.get("due_date") or None,
+                "status": "paid" if data.get("status") == "paid" else "due",
+            }
+            if payload["status"] == "paid":
+                payload["verified_by"] = g.profile["id"]
+                payload["verified_at"] = datetime.now(timezone.utc).isoformat()
+            resp = g.db.table("fee_payments").insert(payload).execute()
+            return jsonify(resp.data[0] if resp.data else {}), 201
+
+        if request.method in ("PUT", "PATCH"):
+            err = require_fields(data, ["id", "status"])
+            if err:
+                return err
+            status = data["status"]
+            if status not in ("due", "pending_verification", "paid"):
+                return jsonify({"error": "Invalid payment status"}), 400
+            updates = {"status": status}
+            if status == "paid":
+                updates["verified_by"] = g.profile["id"]
+                updates["verified_at"] = datetime.now(timezone.utc).isoformat()
+            resp = g.db.table("fee_payments").update(updates).eq("id", int(data["id"])).execute()
+            return jsonify(resp.data[0] if resp.data else {}), 200
+
+        if request.method == "DELETE":
+            fid = request.args.get("id") or data.get("id")
+            if not fid:
+                return jsonify({"error": "Missing 'id'"}), 400
+            g.db.table("fee_payments").delete().eq("id", int(fid)).execute()
+            return jsonify({"deleted": True}), 200
+    except Exception as exc:
+        return safe_error(exc)

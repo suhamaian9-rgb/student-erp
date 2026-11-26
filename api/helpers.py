@@ -55,6 +55,95 @@ def compute_grade(marks_obtained: float, max_marks: float) -> str:
     return "F"
 
 
+def grade_point_from_marks(marks_obtained: float, max_marks: float) -> float:
+    """Compute 4.00-scale UGC grade point from marks."""
+    if max_marks <= 0:
+        return 0.0
+    pct = (marks_obtained / max_marks) * 100.0
+    if pct >= 80:
+        return 4.00
+    if pct >= 75:
+        return 3.75
+    if pct >= 70:
+        return 3.50
+    if pct >= 65:
+        return 3.25
+    if pct >= 60:
+        return 3.00
+    if pct >= 55:
+        return 2.75
+    if pct >= 50:
+        return 2.50
+    if pct >= 45:
+        return 2.25
+    if pct >= 40:
+        return 2.00
+    return 0.00
+
+
+def compute_cgpa_summary(results: list[dict]) -> dict:
+    """Compute credit-weighted CGPA, semester GPAs, and retake/improvement flags."""
+    best_by_subject: dict[str, dict] = {}
+    for r in results or []:
+        subj = r.get("subjects") or {}
+        sub_id = str(r.get("subject_id") or subj.get("id") or r.get("id"))
+        marks = float(r.get("marks_obtained") or 0)
+        max_m = float(r.get("max_marks") or 100)
+        gp = grade_point_from_marks(marks, max_m)
+        credits = float(subj.get("credits") or 3)
+        exam = r.get("examinations") or {}
+        sem_info = exam.get("semesters") or subj.get("semesters") or {}
+        sem_name = sem_info.get("name") or "General"
+
+        prev = best_by_subject.get(sub_id)
+        if prev is None or gp > prev["grade_point"] or (gp == prev["grade_point"] and marks > prev["marks_obtained"]):
+            best_by_subject[sub_id] = {
+                "subject_id": sub_id,
+                "subject_code": subj.get("code") or "",
+                "subject_name": subj.get("name") or "Subject",
+                "credits": credits,
+                "marks_obtained": marks,
+                "max_marks": max_m,
+                "percentage": round((marks / max_m) * 100.0, 1) if max_m > 0 else 0.0,
+                "grade": r.get("grade") or compute_grade(marks, max_m),
+                "grade_point": gp,
+                "semester": sem_name,
+                "exam_name": exam.get("name") or "",
+            }
+
+    subjects_list = list(best_by_subject.values())
+    total_credits_attempted = sum(s["credits"] for s in subjects_list)
+    total_credits_earned = sum(s["credits"] for s in subjects_list if s["grade_point"] > 0)
+    weighted_sum = sum(s["grade_point"] * s["credits"] for s in subjects_list)
+    cgpa = round(weighted_sum / total_credits_attempted, 2) if total_credits_attempted > 0 else 0.0
+
+    sem_map: dict[str, list[dict]] = {}
+    for s in subjects_list:
+        sem_map.setdefault(s["semester"], []).append(s)
+    semester_gpas = []
+    for sem_name, items in sem_map.items():
+        sem_cred = sum(i["credits"] for i in items)
+        sem_w = sum(i["grade_point"] * i["credits"] for i in items)
+        semester_gpas.append({
+            "semester": sem_name,
+            "credits": sem_cred,
+            "sgpa": round(sem_w / sem_cred, 2) if sem_cred > 0 else 0.0,
+        })
+
+    retake_required = [s for s in subjects_list if s["grade_point"] == 0.0]
+    improvement_eligible = [s for s in subjects_list if 0.0 < s["grade_point"] < 2.50]
+
+    return {
+        "cgpa": cgpa,
+        "credits_attempted": total_credits_attempted,
+        "credits_earned": total_credits_earned,
+        "semester_gpas": semester_gpas,
+        "retake_required": retake_required,
+        "improvement_eligible": improvement_eligible,
+        "subject_records": subjects_list,
+    }
+
+
 def require_fields(data: dict, fields: list[str]):
     """Return a 400 JSON response if any required field is missing or blank, else None."""
     if not isinstance(data, dict):

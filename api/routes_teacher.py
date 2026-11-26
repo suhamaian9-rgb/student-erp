@@ -538,3 +538,151 @@ def manage_feedback():
         return jsonify(resp.data[0] if resp.data else {}), 201
     except Exception as exc:
         return safe_error(exc)
+
+
+@teacher_bp.route("/insights", methods=["GET"])
+@require_role("teacher")
+def get_insights():
+    """Return low-attendance (<75%) alerts and subject result averages for this teacher."""
+    try:
+        teacher = _get_teacher_record()
+        if not teacher:
+            return jsonify({"low_attendance": [], "subject_performance": []}), 200
+
+        db = g.db
+        subs = db.table("subjects").select("id, name, code, course_id").eq("teacher_id", teacher["id"]).execute().data or []
+        sub_ids = [s["id"] for s in subs]
+        if not sub_ids:
+            return jsonify({"low_attendance": [], "subject_performance": []}), 200
+
+        sub_map = {s["id"]: s for s in subs}
+        fetched = run_parallel({
+            "att_sessions": lambda: db.table("attendance_sessions").select("id, subject_id").in_("subject_id", sub_ids).execute().data or [],
+            "results": lambda: db.table("results").select("subject_id, marks_obtained, max_marks").in_("subject_id", sub_ids).execute().data or [],
+        })
+        att_sess = fetched["att_sessions"]
+        att_ids = [a["id"] for a in att_sess]
+        att_to_sub = {a["id"]: a["subject_id"] for a in att_sess}
+
+        att_recs = []
+        if att_ids:
+            att_recs = (
+                db.table("attendance_records")
+                .select("attendance_session_id, student_id, status, students(id, roll_number, profiles(first_name, last_name))")
+                .in_("attendance_session_id", att_ids)
+                .execute()
+                .data or []
+            )
+
+        stu_sub_att: dict[tuple[int, int], dict] = {}
+        for r in att_recs:
+            sub_id = att_to_sub.get(r["attendance_session_id"])
+            sid = r["student_id"]
+            if not sub_id or not sid:
+                continue
+            key = (sid, sub_id)
+            if key not in stu_sub_att:
+                st = r.get("students") or {}
+                prof = st.get("profiles") or {}
+                stu_sub_att[key] = {
+                    "student_id": sid,
+                    "roll_number": st.get("roll_number") or "",
+                    "student_name": f"{prof.get('first_name', '')} {prof.get('last_name', '')}".strip(),
+                    "subject_code": sub_map[sub_id]["code"],
+                    "subject_name": sub_map[sub_id]["name"],
+                    "present": 0,
+                    "total": 0,
+                }
+            stu_sub_att[key]["total"] += 1
+            if r.get("status") in ("present", "late"):
+                stu_sub_att[key]["present"] += 1
+
+        low_attendance = []
+        for item in stu_sub_att.values():
+            pct = round((item["present"] / item["total"]) * 100.0, 1) if item["total"] > 0 else 0.0
+            if pct < 75.0:
+                item["percentage"] = pct
+                low_attendance.append(item)
+        low_attendance.sort(key=lambda x: x["percentage"])
+
+        res_by_sub: dict[int, list[float]] = {sid: [] for sid in sub_ids}
+        for r in fetched["results"]:
+            sid = r.get("subject_id")
+            max_m = float(r.get("max_marks") or 100)
+            marks = float(r.get("marks_obtained") or 0)
+            if sid in res_by_sub and max_m > 0:
+                res_by_sub[sid].append((marks / max_m) * 100.0)
+
+        subject_performance = []
+        for s in subs:
+            pcts = res_by_sub.get(s["id"], [])
+            avg_pct = round(sum(pcts) / len(pcts), 1) if pcts else 0.0
+            pass_cnt = sum(1 for p in pcts if p >= 40.0)
+            pass_rate = round((pass_cnt / len(pcts)) * 100.0, 1) if pcts else 0.0
+            subject_performance.append({
+                "subject_code": s["code"],
+                "subject_name": s["name"],
+                "graded_count": len(pcts),
+                "average_percentage": avg_pct,
+                "pass_rate": pass_rate,
+            })
+
+        return jsonify({"low_attendance": low_attendance, "subject_performance": subject_performance}), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@teacher_bp.route("/notices", methods=["GET", "POST", "DELETE"])
+@require_role("teacher")
+def manage_course_notices():
+    """Post and manage subject announcements and study material links."""
+    try:
+        teacher = _get_teacher_record()
+        if not teacher:
+            return jsonify([]), 200
+
+        if request.method == "GET":
+            resp = (
+                g.db.table("course_notices")
+                .select("*, subjects(id, name, code)")
+                .eq("teacher_id", teacher["id"])
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return jsonify(resp.data or []), 200
+
+        data = request.get_json(silent=True) or {}
+        if request.method == "POST":
+            err = require_fields(data, ["subject_id", "title", "content"])
+            if err:
+                return err
+            sub_check = (
+                g.db.table("subjects")
+                .select("id")
+                .eq("id", data["subject_id"])
+                .eq("teacher_id", teacher["id"])
+                .execute()
+                .data
+            )
+            if not sub_check:
+                return jsonify({"error": "You are not assigned to this subject"}), 403
+            res_url = str(data.get("resource_url") or "").strip()
+            if res_url and not (res_url.startswith("https://") or res_url.startswith("http://")):
+                return jsonify({"error": "Resource URL must start with http:// or https://"}), 400
+            resp = g.db.table("course_notices").insert({
+                "subject_id": int(data["subject_id"]),
+                "teacher_id": teacher["id"],
+                "title": str(data["title"]).strip(),
+                "content": str(data["content"]).strip(),
+                "resource_url": res_url,
+            }).execute()
+            return jsonify(resp.data[0] if resp.data else {}), 201
+
+        if request.method == "DELETE":
+            nid = request.args.get("id") or data.get("id")
+            if not nid:
+                return jsonify({"error": "Missing 'id'"}), 400
+            g.db.table("course_notices").delete().eq("id", int(nid)).eq("teacher_id", teacher["id"]).execute()
+            return jsonify({"deleted": True}), 200
+    except Exception as exc:
+        return safe_error(exc)

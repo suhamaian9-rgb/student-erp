@@ -3,7 +3,13 @@
 from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import require_fields, run_parallel, safe_error
+from api.helpers import (
+    compute_cgpa_summary,
+    grade_point_from_marks,
+    require_fields,
+    run_parallel,
+    safe_error,
+)
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -34,8 +40,9 @@ def get_stats():
         tasks = {
             "records": lambda: db.table("attendance_records").select("id, status").eq("student_id", sid).execute().data or [],
             "enrollments": lambda: db.table("enrollments").select("id, semesters(id, is_current)").eq("student_id", sid).execute().data or [],
-            "results": lambda: db.table("results").select("id").eq("student_id", sid).execute().data or [],
+            "results": lambda: db.table("results").select("*, subjects(id, name, code, credits, semesters(id, name)), examinations(id, name, semesters(id, name))").eq("student_id", sid).execute().data or [],
             "leaves": lambda: db.table("leave_applications").select("id, status").eq("applicant_id", profile_id).execute().data or [],
+            "fees": lambda: db.table("fee_payments").select("id, amount, status, fee_type").eq("student_id", sid).execute().data or [],
         }
         if course_id:
             tasks["subjects"] = lambda: db.table("subjects").select("id").eq("course_id", course_id).execute().data or []
@@ -51,7 +58,12 @@ def get_stats():
         running_subjects = sum(1 for e in enrollments if (e.get("semesters") or {}).get("is_current"))
         completed_subjects = len(enrollments) - running_subjects
         results = fetched["results"]
+        cgpa_info = compute_cgpa_summary(results)
         leaves = fetched["leaves"]
+        fees = fetched.get("fees", [])
+        fees_due_total = round(sum(float(f.get("amount") or 0) for f in fees if f.get("status") != "paid"), 2)
+        fees_paid_total = round(sum(float(f.get("amount") or 0) for f in fees if f.get("status") == "paid"), 2)
+        transcript_unlocked = all(f.get("status") == "paid" for f in fees)
 
         return jsonify({
             "student": student,
@@ -64,6 +76,13 @@ def get_stats():
                 "running_subjects": running_subjects,
                 "completed_subjects": completed_subjects,
                 "results": len(results),
+                "cgpa": cgpa_info["cgpa"],
+                "credits_earned": cgpa_info["credits_earned"],
+                "retake_count": len(cgpa_info["retake_required"]),
+                "improvement_count": len(cgpa_info["improvement_eligible"]),
+                "fees_due_total": fees_due_total,
+                "fees_paid_total": fees_paid_total,
+                "transcript_unlocked": transcript_unlocked,
                 "pending_leaves": sum(1 for l in leaves if l.get("status") == "pending"),
             },
         }), 200
@@ -319,9 +338,116 @@ def get_results():
             return jsonify([]), 200
         resp = (
             g.db.table("results")
-            .select("*, examinations(id, name, exam_type, exam_date), subjects(id, name, code, credits)")
+            .select("*, examinations(id, name, exam_type, exam_date, semesters(id, name)), subjects(id, name, code, credits, semesters(id, name))")
             .eq("student_id", student["id"])
             .order("id", desc=True)
+            .execute()
+        )
+        rows = resp.data or []
+        for r in rows:
+            r["grade_point"] = grade_point_from_marks(
+                float(r.get("marks_obtained") or 0),
+                float(r.get("max_marks") or 100),
+            )
+        return jsonify(rows), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@student_bp.route("/transcript", methods=["GET"])
+@require_role("student")
+def get_transcript():
+    """Return CGPA summary, retake/improvement list, and verified transcript status."""
+    try:
+        student = _get_student_record()
+        if not student:
+            return jsonify({"error": "Student record not found"}), 404
+        sid = student["id"]
+        db = g.db
+        fetched = run_parallel({
+            "results": lambda: db.table("results").select(
+                "*, examinations(id, name, exam_type, exam_date, semesters(id, name)), subjects(id, name, code, credits, semesters(id, name))"
+            ).eq("student_id", sid).order("id", desc=True).execute().data or [],
+            "fees": lambda: db.table("fee_payments").select("*").eq("student_id", sid).execute().data or [],
+        })
+        summary = compute_cgpa_summary(fetched["results"])
+        fees = fetched["fees"]
+        unpaid_fees = [f for f in fees if f.get("status") != "paid"]
+        transcript_unlocked = len(unpaid_fees) == 0
+
+        return jsonify({
+            "student": student,
+            "profile": g.profile,
+            "summary": summary,
+            "transcript_unlocked": transcript_unlocked,
+            "unpaid_fees": unpaid_fees,
+            "verification_code": f"PRSTU-TR-{student.get('roll_number', sid)}" if transcript_unlocked else None,
+        }), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@student_bp.route("/fees", methods=["GET", "POST"])
+@require_role("student")
+def manage_student_fees():
+    """View due/completed fees and submit payment reference for verification."""
+    try:
+        student = _get_student_record()
+        if not student:
+            return jsonify([]), 200
+
+        if request.method == "GET":
+            resp = (
+                g.db.table("fee_payments")
+                .select("*, semesters(id, name)")
+                .eq("student_id", student["id"])
+                .order("id", desc=True)
+                .execute()
+            )
+            return jsonify(resp.data or []), 200
+
+        data = request.get_json(silent=True) or {}
+        err = require_fields(data, ["id", "transaction_ref", "payment_method"])
+        if err:
+            return err
+        resp = (
+            g.db.table("fee_payments")
+            .update({
+                "transaction_ref": str(data["transaction_ref"]).strip(),
+                "payment_method": str(data["payment_method"]).strip(),
+                "status": "pending_verification",
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            })
+            .eq("id", int(data["id"]))
+            .eq("student_id", student["id"])
+            .execute()
+        )
+        return jsonify(resp.data[0] if resp.data else {}), 200
+    except Exception as exc:
+        return safe_error(exc)
+
+
+@student_bp.route("/notices", methods=["GET"])
+@require_role("student")
+def get_course_notices():
+    """Return teacher announcements and study material links for student's subjects."""
+    try:
+        student = _get_student_record()
+        if not student:
+            return jsonify([]), 200
+        enr_rows = g.db.table("enrollments").select("subject_id").eq("student_id", student["id"]).execute().data or []
+        sub_ids = [r["subject_id"] for r in enr_rows]
+        if not sub_ids and student.get("course_id"):
+            subs = g.db.table("subjects").select("id").eq("course_id", student["course_id"]).execute().data or []
+            sub_ids = [s["id"] for s in subs]
+        if not sub_ids:
+            return jsonify([]), 200
+        resp = (
+            g.db.table("course_notices")
+            .select("*, subjects(id, name, code), teachers(id, profiles(first_name, last_name))")
+            .in_("subject_id", sub_ids)
+            .order("created_at", desc=True)
+            .limit(50)
             .execute()
         )
         return jsonify(resp.data or []), 200

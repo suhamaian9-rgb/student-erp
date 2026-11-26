@@ -19,6 +19,7 @@
     { id: "take-attendance", label: "Take Attendance", icon: "check-square" },
     { id: "update-attendance", label: "Update Attendance", icon: "edit" },
     { id: "results", label: "Examination Results", icon: "award" },
+    { id: "insights", label: "Class Insights & Notices", icon: "bar-chart-2" },
     { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
     { id: "feedback", label: "Feedback", icon: "message-square" },
     { id: "profile", label: "My Profile", icon: "user-circle" },
@@ -564,12 +565,127 @@
     };
   }
 
+  // 8. CLASS INSIGHTS & SUBJECT NOTICES
+  async function loadInsightsAndNotices(signal) {
+    const [insights, notices, subjects] = await Promise.all([
+      ERP.cachedApi("/api/teacher/insights", { signal }),
+      ERP.cachedApi("/api/teacher/notices", { signal }),
+      ERP.cachedApi("/api/teacher/subjects", { signal }),
+    ]);
+
+    main.innerHTML = `
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card panel-card p-3 p-md-4 h-100">
+            <h5 class="fw-bold mb-1">Low Attendance Alert (&lt; 75%)</h5>
+            <div class="small text-muted mb-3">Students below 75% attendance in your subjects.</div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Roll No</th><th>Student</th><th>Subject</th><th>Attendance</th></tr></thead>
+                <tbody>
+                  ${(insights.low_attendance || []).map((a) => `
+                    <tr>
+                      <td><strong>${esc(a.roll_number)}</strong></td>
+                      <td>${esc(a.student_name)}</td>
+                      <td>${esc(a.subject_code)}</td>
+                      <td><span class="badge bg-danger">${a.percentage}% (${a.present}/${a.total})</span></td>
+                    </tr>`).join("") || `<tr><td colspan="4" class="text-center text-muted py-3">All students have &ge; 75% attendance.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card panel-card p-3 p-md-4 h-100">
+            <h5 class="fw-bold mb-1">Subject Performance Summary</h5>
+            <div class="small text-muted mb-3">Average marks and pass rate across graded exams.</div>
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Subject</th><th>Graded</th><th>Avg %</th><th>Pass Rate</th></tr></thead>
+                <tbody>
+                  ${(insights.subject_performance || []).map((p) => `
+                    <tr>
+                      <td><strong>${esc(p.subject_code)}</strong> — ${esc(p.subject_name)}</td>
+                      <td>${p.graded_count}</td>
+                      <td>${p.average_percentage}%</td>
+                      <td><span class="badge ${p.pass_rate >= 60 ? "bg-success" : "bg-warning text-dark"}">${p.pass_rate}%</span></td>
+                    </tr>`).join("") || `<tr><td colspan="4" class="text-center text-muted py-3">No subjects assigned.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-5">
+          <div class="card panel-card p-3 p-md-4">
+            <h5 class="fw-bold mb-3">Post Class Notice / Material</h5>
+            <form id="t-notice-form" class="row g-3">
+              <div class="col-12"><label class="form-label">Subject</label>
+                <select id="tn-sub" class="form-select" required>${subjects.map((s) => `<option value="${s.id}">${esc(s.name)} (${esc(s.code)})</option>`).join("")}</select>
+              </div>
+              <div class="col-12"><label class="form-label">Title</label><input id="tn-title" class="form-control" placeholder="e.g. Week 4 Lecture Slides" required></div>
+              <div class="col-12"><label class="form-label">Message</label><textarea id="tn-content" class="form-control" rows="3" required></textarea></div>
+              <div class="col-12"><label class="form-label">Resource Link (Optional)</label><input type="url" id="tn-url" class="form-control" placeholder="https://drive.google.com/..."></div>
+              <div class="col-12"><button class="btn btn-primary" type="submit">Publish Notice</button></div>
+            </form>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="card panel-card p-3 p-md-4">
+            <h5 class="fw-bold mb-3">Published Class Notices</h5>
+            ${(notices || []).map((n) => `
+              <div class="border rounded p-3 mb-2 d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <span class="badge bg-primary me-1">${esc(n.subjects?.code)}</span>
+                  <strong>${esc(n.title)}</strong>
+                  <div class="small text-muted mt-1">${esc(n.content)}</div>
+                  ${n.resource_url ? `<a href="${esc(n.resource_url)}" target="_blank" rel="noopener" class="small">Open Material Link</a>` : ""}
+                </div>
+                <button class="btn btn-sm btn-outline-danger del-notice-btn" data-id="${n.id}">Delete</button>
+              </div>`).join("") || `<div class="text-muted small">No class notices published yet.</div>`}
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById("t-notice-form").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        await ERP.api("/api/teacher/notices", {
+          method: "POST",
+          body: JSON.stringify({
+            subject_id: Number(document.getElementById("tn-sub").value),
+            title: document.getElementById("tn-title").value.trim(),
+            content: document.getElementById("tn-content").value.trim(),
+            resource_url: document.getElementById("tn-url").value.trim(),
+          }),
+        });
+        ERP.invalidateCache("/api/teacher/notices");
+        ERP.showToast("Notice published to enrolled students!");
+        loadInsightsAndNotices(signal);
+      } catch (err) { ERP.showToast(err.message, "danger"); }
+    };
+
+    main.querySelectorAll(".del-notice-btn").forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await ERP.api(`/api/teacher/notices?id=${b.dataset.id}`, { method: "DELETE" });
+          ERP.invalidateCache("/api/teacher/notices");
+          ERP.showToast("Notice deleted");
+          loadInsightsAndNotices(signal);
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    });
+  }
+
   const tabHandlers = {
     overview: loadOverview,
     subjects: loadSubjectsAndStudents,
     "take-attendance": loadTakeAttendance,
     "update-attendance": loadUpdateAttendance,
     results: loadResults,
+    insights: loadInsightsAndNotices,
     leaves: loadLeaves,
     feedback: loadFeedback,
     profile: async () => {

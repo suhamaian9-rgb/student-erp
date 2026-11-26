@@ -28,6 +28,7 @@
     { id: "students", label: "Students", icon: "users" },
     { id: "attendance", label: "Attendance Reports", icon: "check-square" },
     { id: "results", label: "Exams & Results", icon: "award" },
+    { id: "fees", label: "Fees & Payments", icon: "credit-card" },
     { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
     { id: "feedback", label: "Feedback", icon: "message-square" },
     { id: "notifications", label: "Send Notice", icon: "megaphone" },
@@ -1390,6 +1391,112 @@
     });
   }
 
+  // 14. FEES & PAYMENTS
+  async function loadFees(signal) {
+    const [rows, students, semesters] = await Promise.all([
+      ERP.cachedApi("/api/admin/fees", { signal }),
+      ERP.cachedApi("/api/admin/students", { signal }),
+      ERP.cachedApi("/api/admin/semesters", { signal }),
+    ]);
+
+    const showFeeModal = () => {
+      openModal("Create Fee Invoice", `
+        <form id="fee-form" class="row g-3">
+          <div class="col-md-6"><label class="form-label">Student</label>
+            <select id="f-stud" class="form-select" required>
+              ${students.map((s) => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.profiles?.first_name)} ${esc(s.profiles?.last_name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">Fee Type</label>
+            <select id="f-type" class="form-select">
+              <option value="tuition">Tuition</option>
+              <option value="transcript">Transcript</option>
+              <option value="exam">Examination</option>
+              <option value="retake">Retake / Improvement</option>
+              <option value="library">Library</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="col-md-3"><label class="form-label">Amount (BDT)</label><input type="number" min="1" step="0.01" id="f-amt" class="form-control" required></div>
+          <div class="col-md-5"><label class="form-label">Title</label><input id="f-title" class="form-control" placeholder="e.g. Semester Tuition Fee" required></div>
+          <div class="col-md-4"><label class="form-label">Semester</label>
+            <select id="f-sem" class="form-select"><option value="">— Optional —</option>${semesters.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select>
+          </div>
+          <div class="col-md-3"><label class="form-label">Due Date</label><input type="date" id="f-due" class="form-control"></div>
+          <div class="col-12 text-end"><button class="btn btn-primary" type="submit">Create Invoice</button></div>
+        </form>`);
+      document.getElementById("fee-form").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await ERP.api("/api/admin/fees", {
+            method: "POST",
+            body: JSON.stringify({
+              student_id: Number(document.getElementById("f-stud").value),
+              fee_type: document.getElementById("f-type").value,
+              amount: Number(document.getElementById("f-amt").value),
+              title: document.getElementById("f-title").value.trim(),
+              semester_id: document.getElementById("f-sem").value ? Number(document.getElementById("f-sem").value) : null,
+              due_date: document.getElementById("f-due").value || null,
+            }),
+          });
+          modal.hide();
+          ERP.invalidateCache("/api/admin/fees");
+          ERP.showToast("Fee invoice created!");
+          loadFees();
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    };
+
+    const statusBadge = (st) => {
+      if (st === "paid") return '<span class="badge bg-success">Completed (Paid)</span>';
+      if (st === "pending_verification") return '<span class="badge bg-warning text-dark">Pending Verification</span>';
+      return '<span class="badge bg-danger">Due</span>';
+    };
+
+    ERP.renderDataTable(main, {
+      title: "Fees & Payment Verification",
+      addLabel: "Create Invoice",
+      onAdd: showFeeModal,
+      rows,
+      filters: [
+        { id: "status", label: "Status", getValue: (r) => r.status },
+        { id: "type", label: "Type", getValue: (r) => r.fee_type },
+      ],
+      columns: [
+        { label: "Student", sortValue: (r) => r.students?.roll_number || "", render: (r) => `<strong>${esc(r.students?.roll_number)}</strong><br><small class="text-muted">${esc(r.students?.profiles?.first_name)} ${esc(r.students?.profiles?.last_name)}</small>` },
+        { label: "Invoice", sortValue: (r) => r.title || "", render: (r) => `<strong>${esc(r.title)}</strong><br><small class="text-muted text-uppercase">${esc(r.fee_type)}</small>` },
+        { label: "Amount", sortValue: (r) => Number(r.amount) || 0, render: (r) => `৳ ${Number(r.amount || 0).toFixed(2)}` },
+        { label: "Payment Ref", render: (r) => r.transaction_ref ? `<span class="badge bg-light text-dark border">${esc(r.payment_method)}: ${esc(r.transaction_ref)}</span>` : "—" },
+        { label: "Status", sortValue: (r) => r.status || "", render: (r) => statusBadge(r.status) },
+        {
+          label: "Actions",
+          render: (r) => `
+            ${r.status !== "paid" ? `<button class="btn btn-sm btn-success me-1" data-verify-fee="${r.id}">Verify Paid</button>` : ""}
+            <button class="btn btn-sm btn-outline-danger" data-del-fee="${r.id}">Delete</button>`,
+        },
+      ],
+      onAction: async (b) => {
+        if (b.dataset.verifyFee) {
+          try {
+            await ERP.api("/api/admin/fees", { method: "PATCH", body: JSON.stringify({ id: Number(b.dataset.verifyFee), status: "paid" }) });
+            ERP.invalidateCache("/api/admin/fees");
+            ERP.showToast("Payment verified! Student transcript is now unlocked if no other dues remain.");
+            loadFees();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+        if (b.dataset.delFee) {
+          if (!(await ERP.confirmAction({ title: "Delete Invoice", message: "Delete this fee invoice?", confirmLabel: "Delete", confirmClass: "btn-danger" }))) return;
+          try {
+            await ERP.api(`/api/admin/fees?id=${b.dataset.delFee}`, { method: "DELETE" });
+            ERP.invalidateCache("/api/admin/fees");
+            ERP.showToast("Invoice deleted");
+            loadFees();
+          } catch (err) { ERP.showToast(err.message, "danger"); }
+        }
+      },
+    });
+  }
+
   const tabHandlers = {
     overview: loadOverview,
     departments: loadDepartments,
@@ -1401,6 +1508,7 @@
     students: loadStudents,
     attendance: loadAttendance,
     results: loadResults,
+    fees: loadFees,
     leaves: loadLeaves,
     feedback: loadFeedback,
     notifications: loadNotificationsForm,

@@ -502,3 +502,154 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
     inserted = fake_close_db.instances["attendance_records"]._payload
     assert len(inserted) == 2
     assert all(r["status"] == "absent" for r in inserted)
+
+
+def test_cgpa_summary_retake_and_improvement():
+    from api.helpers import compute_cgpa_summary
+
+    summary = compute_cgpa_summary([
+        {
+            "subject_id": 1,
+            "exam_type": "Final",
+            "marks_obtained": 85,
+            "max_marks": 100,
+            "subjects": {"name": "Algorithms", "code": "CSE 201", "credits": 3, "semester": 2},
+        },
+        {
+            "subject_id": 2,
+            "exam_type": "Final",
+            "marks_obtained": 42,
+            "max_marks": 100,
+            "subjects": {"name": "Physics", "code": "PHY 101", "credits": 3, "semester": 1},
+        },
+        {
+            "subject_id": 3,
+            "exam_type": "Final",
+            "marks_obtained": 30,
+            "max_marks": 100,
+            "subjects": {"name": "Chemistry", "code": "CHE 101", "credits": 2, "semester": 1},
+        },
+    ])
+    # Weighted GPA: (4.0 * 3 + 2.0 * 3 + 0.0 * 2) / 8 = 18 / 8 = 2.25
+    assert summary["cgpa"] == 2.25
+    assert summary["credits_attempted"] == 8.0
+    assert summary["credits_earned"] == 6.0
+    assert len(summary["retake_required"]) == 1
+    assert summary["retake_required"][0]["subject_code"] == "CHE 101"
+    assert len(summary["improvement_eligible"]) == 1
+    assert summary["improvement_eligible"][0]["subject_code"] == "PHY 101"
+
+
+def test_fees_payment_verification_unlocks_transcript(monkeypatch):
+    fee_row = {
+        "id": 10,
+        "student_id": 1,
+        "title": "Semester Tuition",
+        "fee_type": "tuition",
+        "amount": 5000,
+        "due_date": "2026-12-01",
+        "status": "due",
+        "payment_method": "",
+        "transaction_ref": "",
+        "students": {"id": 1, "roll_number": "220101", "profiles": {"first_name": "Test", "last_name": "User", "email": "student@uni.edu"}},
+    }
+    tables = {
+        "students": [{"id": 1, "profile_id": "user-1", "roll_number": "220101", "registration_no": "REG-1", "course_id": 1, "courses": {"name": "CSE", "code": "CSE", "total_semesters": 8}}],
+        "fee_payments": [fee_row],
+        "results": [
+            {
+                "id": 1,
+                "student_id": 1,
+                "subject_id": 1,
+                "marks_obtained": 82,
+                "max_marks": 100,
+                "subjects": {"id": 1, "name": "Algorithms", "code": "CSE 201", "credits": 3, "semesters": {"id": 1, "name": "1st Semester"}},
+                "examinations": {"id": 1, "name": "Final", "exam_type": "Final", "exam_date": "2026-06-01", "semesters": {"id": 1, "name": "1st Semester"}},
+            }
+        ],
+    }
+
+    # 1. Admin creates invoice
+    _mock_auth(monkeypatch, role="admin", tables=tables)
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+    create_resp = client.post("/api/admin/fees", json={"student_id": 1, "title": "Semester Tuition", "amount": 5000, "fee_type": "tuition"})
+    assert create_resp.status_code == 201
+
+    # 2. Student submits payment reference -> still pending_verification, transcript locked
+    _mock_auth(monkeypatch, role="student", tables=tables)
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+    pay_resp = client.post("/api/student/fees", json={"id": 10, "payment_method": "bKash", "transaction_ref": "TRX999"})
+    assert pay_resp.status_code == 200
+    fee_row["status"] = "pending_verification"
+
+    tr_locked = client.get("/api/student/transcript")
+    assert tr_locked.status_code == 200
+    assert tr_locked.get_json()["transcript_unlocked"] is False
+
+    # 3. Admin verifies payment as paid -> transcript unlocks
+    _mock_auth(monkeypatch, role="admin", tables=tables)
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+    verify_resp = client.patch("/api/admin/fees", json={"id": 10, "status": "paid"})
+    assert verify_resp.status_code == 200
+    fee_row["status"] = "paid"
+
+    _mock_auth(monkeypatch, role="student", tables=tables)
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+    tr_unlocked = client.get("/api/student/transcript")
+    assert tr_unlocked.status_code == 200
+    tr_data = tr_unlocked.get_json()
+    assert tr_data["transcript_unlocked"] is True
+    assert tr_data["summary"]["cgpa"] == 4.0
+
+
+def test_teacher_insights_and_notices(monkeypatch):
+    tables = {
+        "teachers": [{"id": 5, "profile_id": "user-1", "full_name": "Teacher One"}],
+        "subjects": [{"id": 10, "teacher_id": 5, "name": "Algorithms", "code": "CSE 201", "course_id": 1}],
+        "attendance_sessions": [
+            {"id": 100, "subject_id": 10},
+            {"id": 101, "subject_id": 10},
+            {"id": 102, "subject_id": 10},
+        ],
+        "attendance_records": [
+            {"attendance_session_id": 100, "student_id": 1, "status": "absent", "students": {"id": 1, "roll_number": "220105", "profiles": {"first_name": "Low", "last_name": "Student"}}},
+            {"attendance_session_id": 101, "student_id": 1, "status": "absent", "students": {"id": 1, "roll_number": "220105", "profiles": {"first_name": "Low", "last_name": "Student"}}},
+            {"attendance_session_id": 102, "student_id": 1, "status": "present", "students": {"id": 1, "roll_number": "220105", "profiles": {"first_name": "Low", "last_name": "Student"}}},
+        ],
+        "results": [
+            {"subject_id": 10, "marks_obtained": 70, "max_marks": 100},
+            {"subject_id": 10, "marks_obtained": 30, "max_marks": 100},
+        ],
+        "course_notices": [],
+    }
+    _mock_auth(monkeypatch, role="teacher", tables=tables)
+    client = app.test_client()
+    client.set_cookie("erp_access_token", "valid-tok")
+
+    ins_resp = client.get("/api/teacher/insights")
+    assert ins_resp.status_code == 200
+    ins = ins_resp.get_json()
+    assert len(ins["low_attendance"]) == 1
+    assert ins["low_attendance"][0]["percentage"] == 33.3
+    assert len(ins["subject_performance"]) == 1
+    assert ins["subject_performance"][0]["pass_rate"] == 50.0
+
+    bad_notice = client.post("/api/teacher/notices", json={
+        "subject_id": 10,
+        "title": "Bad Link",
+        "content": "Check this",
+        "resource_url": "javascript:alert(1)",
+    })
+    assert bad_notice.status_code == 400
+
+    good_notice = client.post("/api/teacher/notices", json={
+        "subject_id": 10,
+        "title": "Lecture 1 Slides",
+        "content": "Review before Monday",
+        "resource_url": "https://example.com/slides.pdf",
+    })
+    assert good_notice.status_code == 201

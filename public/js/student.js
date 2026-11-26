@@ -18,6 +18,10 @@
     { id: "subjects", label: "My Subjects", icon: "book-marked" },
     { id: "attendance", label: "Attendance", icon: "calendar-check" },
     { id: "results", label: "Results & Grades", icon: "award" },
+    { id: "transcript", label: "Transcript & Retake", icon: "file-text" },
+    { id: "fees", label: "Fees & Payments", icon: "credit-card" },
+    { id: "notices", label: "Class Notices", icon: "megaphone" },
+    { id: "idcard", label: "ID Card", icon: "badge" },
     { id: "leaves", label: "Leave Applications", icon: "calendar-x" },
     { id: "feedback", label: "Feedback", icon: "message-square" },
     { id: "profile", label: "My Profile", icon: "user-circle" },
@@ -32,10 +36,10 @@
     if (signal?.aborted) return;
     const c = stats.counts;
     const cards = [
-      { label: "Attendance %", val: `${c.attendance_percentage}%`, icon: "pie-chart", bg: "bg-primary-subtle text-primary" },
-      { label: "Subjects", val: c.subjects, icon: "book-marked", bg: "bg-success-subtle text-success" },
-      { label: "Graded Exams", val: c.results, icon: "award", bg: "bg-info-subtle text-info" },
-      { label: "Pending Leaves", val: c.pending_leaves, icon: "calendar-x", bg: "bg-warning-subtle text-warning" },
+      { label: "CGPA (4.00)", val: Number(c.cgpa || 0).toFixed(2), icon: "award", bg: "bg-primary-subtle text-primary" },
+      { label: "Attendance %", val: `${c.attendance_percentage}%`, icon: "pie-chart", bg: "bg-success-subtle text-success" },
+      { label: "Fees Due", val: `৳ ${Number(c.fees_due_total || 0).toFixed(0)}`, icon: "credit-card", bg: "bg-warning-subtle text-warning" },
+      { label: "Retake / Improv.", val: (c.retake_count || 0) + (c.improvement_count || 0), icon: "alert-triangle", bg: "bg-danger-subtle text-danger" },
     ];
 
     main.innerHTML = `
@@ -371,11 +375,249 @@
     };
   }
 
+  // 7. TRANSCRIPT, CGPA & RETAKE / IMPROVEMENT
+  async function loadTranscript(signal) {
+    const data = await ERP.cachedApi("/api/student/transcript", { signal });
+    const sum = data.summary || {};
+    const retakes = sum.retake_required || [];
+    const improvements = sum.improvement_eligible || [];
+    const semGpas = sum.semester_gpas || [];
+
+    main.innerHTML = `
+      <div class="row g-3 mb-4">
+        <div class="col-md-4">
+          <div class="card stat-card p-3">
+            <div class="small text-muted">Cumulative CGPA</div>
+            <div class="fs-3 fw-bold text-primary">${Number(sum.cgpa || 0).toFixed(2)} / 4.00</div>
+            <div class="small text-muted">Credits Earned: ${sum.credits_earned || 0} / ${sum.credits_attempted || 0}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card stat-card p-3">
+            <div class="small text-muted">Retake Required (F Grade)</div>
+            <div class="fs-3 fw-bold text-danger">${retakes.length}</div>
+            <div class="small text-muted">Subjects needing mandatory retake</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card stat-card p-3">
+            <div class="small text-muted">Improvement Eligible</div>
+            <div class="fs-3 fw-bold text-warning">${improvements.length}</div>
+            <div class="small text-muted">Passed subjects with GP &lt; 2.50</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card panel-card p-3 p-md-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+          <div>
+            <h5 class="fw-bold mb-0">Official Academic Transcript</h5>
+            <div class="small text-muted">Automatically unlocked once all university fees are verified as Paid.</div>
+          </div>
+          ${data.transcript_unlocked
+            ? `<button id="print-transcript-btn" class="btn btn-primary btn-sm">Download / Print Official Transcript</button>`
+            : `<button class="btn btn-secondary btn-sm" disabled>Transcript Locked (Payment Required)</button>`}
+        </div>
+        ${data.transcript_unlocked ? `
+          <div class="alert alert-success small mb-3">
+            Payment verified! Verification Code: <strong>${esc(data.verification_code)}</strong>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0">
+              <thead><tr><th>Code</th><th>Subject</th><th>Semester</th><th>Credits</th><th>Marks</th><th>Grade</th><th>GP</th></tr></thead>
+              <tbody>
+                ${(sum.subject_records || []).map((r) => `
+                  <tr>
+                    <td>${esc(r.subject_code)}</td>
+                    <td>${esc(r.subject_name)}</td>
+                    <td>${esc(r.semester)}</td>
+                    <td>${r.credits}</td>
+                    <td>${r.marks_obtained} / ${r.max_marks}</td>
+                    <td><span class="badge bg-primary">${esc(r.grade)}</span></td>
+                    <td>${Number(r.grade_point).toFixed(2)}</td>
+                  </tr>`).join("") || `<tr><td colspan="7" class="text-center text-muted">No graded subjects yet.</td></tr>`}
+              </tbody>
+            </table>
+          </div>` : `
+          <div class="alert alert-warning mb-0">
+            <strong>Transcript Locked:</strong> You have ${(data.unpaid_fees || []).length} unpaid or pending-verification fee(s). Please complete payment in <strong>Fees &amp; Payments</strong> to unlock your official transcript.
+          </div>`}
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <div class="card panel-card p-3 p-md-4 h-100">
+            <h6 class="fw-bold mb-3 text-danger">Retake Required Subjects</h6>
+            ${retakes.length === 0 ? `<div class="small text-muted">No failed subjects requiring retake.</div>` : retakes.map((r) => `
+              <div class="border rounded p-2 mb-2 d-flex justify-content-between align-items-center">
+                <div><strong>${esc(r.subject_code)}</strong> — ${esc(r.subject_name)}</div>
+                <span class="badge bg-danger">Grade: ${esc(r.grade)} (${r.percentage}%)</span>
+              </div>`).join("")}
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card panel-card p-3 p-md-4 h-100">
+            <h6 class="fw-bold mb-3 text-warning">Improvement Eligible Subjects (GP &lt; 2.50)</h6>
+            ${improvements.length === 0 ? `<div class="small text-muted">No subjects flagged for improvement.</div>` : improvements.map((r) => `
+              <div class="border rounded p-2 mb-2 d-flex justify-content-between align-items-center">
+                <div><strong>${esc(r.subject_code)}</strong> — ${esc(r.subject_name)}</div>
+                <span class="badge bg-warning text-dark">GP: ${Number(r.grade_point).toFixed(2)} (${esc(r.grade)})</span>
+              </div>`).join("")}
+          </div>
+        </div>
+      </div>`;
+
+    const printBtn = document.getElementById("print-transcript-btn");
+    if (printBtn) {
+      printBtn.onclick = () => {
+        const st = data.student || {};
+        const p = data.profile || {};
+        const win = window.open("", "_blank");
+        if (!win) return ERP.showToast("Please allow pop-ups to print transcript", "warning");
+        win.document.write(`<!DOCTYPE html><html><head><title>Official Transcript - ${esc(st.roll_number)}</title>
+          <style>body{font-family:Georgia,serif;padding:32px;color:#111}h1,h2{margin:0 0 6px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #444;padding:8px;text-align:left;font-size:13px}th{background:#f1f5f9}.meta{margin:14px 0;font-size:14px;line-height:1.6}.foot{margin-top:28px;display:flex;justify-content:space-between;font-size:13px}</style></head><body>
+          <h1>Pirojpur Science &amp; Technology University</h1>
+          <h2>Official Academic Transcript</h2>
+          <div class="meta">
+            <strong>Name:</strong> ${esc(p.first_name)} ${esc(p.last_name)} &nbsp;|&nbsp;
+            <strong>Roll No:</strong> ${esc(st.roll_number)}<br>
+            <strong>Course:</strong> ${esc(st.courses?.name || "—")} &nbsp;|&nbsp;
+            <strong>Session:</strong> ${esc(st.academic_sessions?.name || "—")}<br>
+            <strong>Cumulative CGPA:</strong> ${Number(sum.cgpa || 0).toFixed(2)} / 4.00 &nbsp;|&nbsp;
+            <strong>Verification ID:</strong> ${esc(data.verification_code)}
+          </div>
+          <table><thead><tr><th>Code</th><th>Subject</th><th>Semester</th><th>Credits</th><th>Marks</th><th>Grade</th><th>GP</th></tr></thead><tbody>
+            ${(sum.subject_records || []).map((r) => `<tr><td>${esc(r.subject_code)}</td><td>${esc(r.subject_name)}</td><td>${esc(r.semester)}</td><td>${r.credits}</td><td>${r.marks_obtained}/${r.max_marks}</td><td>${esc(r.grade)}</td><td>${Number(r.grade_point).toFixed(2)}</td></tr>`).join("")}
+          </tbody></table>
+          <div class="foot"><span>Generated: ${new Date().toLocaleDateString()}</span><span>Controller of Examinations (Verified)</span></div>
+          </body></html>`);
+        win.document.close();
+        win.print();
+      };
+    }
+  }
+
+  // 8. FEES & PAYMENTS
+  async function loadFees(signal) {
+    const rows = await ERP.cachedApi("/api/student/fees", { signal });
+    const dueTotal = rows.filter((r) => r.status !== "paid").reduce((a, b) => a + Number(b.amount || 0), 0);
+    const paidTotal = rows.filter((r) => r.status === "paid").reduce((a, b) => a + Number(b.amount || 0), 0);
+
+    main.innerHTML = `
+      <div class="row g-3 mb-4">
+        <div class="col-md-6"><div class="card stat-card p-3"><div class="small text-muted">Total Fees Due / Pending</div><div class="fs-3 fw-bold text-danger">৳ ${dueTotal.toFixed(2)}</div></div></div>
+        <div class="col-md-6"><div class="card stat-card p-3"><div class="small text-muted">Completed Payments</div><div class="fs-3 fw-bold text-success">৳ ${paidTotal.toFixed(2)}</div></div></div>
+      </div>
+      <div class="card panel-card p-3 p-md-4">
+        <h5 class="fw-bold mb-3">My Fee Invoices</h5>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Invoice</th><th>Type</th><th>Amount</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              ${rows.map((r) => `
+                <tr>
+                  <td><strong>${esc(r.title)}</strong></td>
+                  <td><span class="badge bg-secondary text-uppercase">${esc(r.fee_type)}</span></td>
+                  <td>৳ ${Number(r.amount).toFixed(2)}</td>
+                  <td>${esc(r.due_date || "—")}</td>
+                  <td>${r.status === "paid" ? '<span class="badge bg-success">Completed</span>' : r.status === "pending_verification" ? '<span class="badge bg-warning text-dark">Pending Verification</span>' : '<span class="badge bg-danger">Due</span>'}</td>
+                  <td>${r.status === "due" ? `<button class="btn btn-sm btn-primary pay-fee-btn" data-id="${r.id}">Submit Payment Ref</button>` : `<small class="text-muted">${esc(r.transaction_ref || "Verified")}</small>`}</td>
+                </tr>`).join("") || `<tr><td colspan="6" class="text-center text-muted py-3">No fee invoices assigned.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    main.querySelectorAll(".pay-fee-btn").forEach((btn) => {
+      btn.onclick = async () => {
+        const method = prompt("Payment Method (e.g., Bank Slip, bKash, Nagad, Cash):", "Bank Slip");
+        if (!method) return;
+        const trx = prompt("Enter Transaction ID / Receipt Number:");
+        if (!trx) return;
+        try {
+          await ERP.api("/api/student/fees", {
+            method: "POST",
+            body: JSON.stringify({ id: Number(btn.dataset.id), payment_method: method, transaction_ref: trx }),
+          });
+          ERP.invalidateCache("/api/student/fees");
+          ERP.invalidateCache("/api/student/stats");
+          ERP.invalidateCache("/api/student/transcript");
+          ERP.showToast("Payment reference submitted for Admin verification!");
+          loadFees(signal);
+        } catch (err) { ERP.showToast(err.message, "danger"); }
+      };
+    });
+  }
+
+  // 9. CLASS NOTICES
+  async function loadClassNotices(signal) {
+    const rows = await ERP.cachedApi("/api/student/notices", { signal });
+    main.innerHTML = `
+      <div class="card panel-card p-3 p-md-4">
+        <h5 class="fw-bold mb-3">Subject Announcements &amp; Study Materials</h5>
+        ${(rows || []).map((n) => `
+          <div class="border rounded p-3 mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <div><span class="badge bg-primary me-1">${esc(n.subjects?.code)}</span> <strong>${esc(n.title)}</strong></div>
+              <small class="text-muted">${esc((n.created_at || "").slice(0, 10))}</small>
+            </div>
+            <div class="small text-muted mb-1">Instructor: ${esc(n.teachers?.profiles?.first_name || "")} ${esc(n.teachers?.profiles?.last_name || "")}</div>
+            <p class="mb-1 small">${esc(n.content)}</p>
+            ${n.resource_url ? `<a href="${esc(n.resource_url)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mt-1">Open Material</a>` : ""}
+          </div>`).join("") || `<div class="text-muted small">No class notices yet.</div>`}
+      </div>`;
+  }
+
+  // 10. DIGITAL ID CARD
+  function loadIdCard() {
+    const p = userData.profile || {};
+    const st = userData.role_record || {};
+    const fullName = `${p.first_name || ""} ${p.last_name || ""}`.trim() || p.username || "Student";
+    main.innerHTML = `
+      <div class="card panel-card p-4" style="max-width: 480px;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0">University Digital ID Card</h5>
+          <button id="print-id-btn" class="btn btn-primary btn-sm">Print / Save PDF</button>
+        </div>
+        <div id="id-card-box" class="border rounded-3 overflow-hidden shadow-sm bg-white">
+          <div class="p-3 text-white" style="background: linear-gradient(135deg, #1E3A5F, #132842);">
+            <div class="fw-bold font-serif fs-5">Pirojpur Science &amp; Technology University</div>
+            <div class="small opacity-75">STUDENT IDENTITY CARD</div>
+          </div>
+          <div class="p-3">
+            <div class="fs-5 fw-bold mb-1">${esc(fullName)}</div>
+            <div class="badge bg-primary mb-3">ID: ${esc(st.roll_number || "—")}</div>
+            <div class="small mb-1"><strong>Department:</strong> ${esc(st.courses?.departments?.name || "—")}</div>
+            <div class="small mb-1"><strong>Program:</strong> ${esc(st.courses?.name || "—")}</div>
+            <div class="small mb-1"><strong>Session:</strong> ${esc(st.academic_sessions?.name || "—")}</div>
+            <div class="small mb-1"><strong>Email:</strong> ${esc(p.email || "—")}</div>
+            <div class="small"><strong>Phone:</strong> ${esc(p.phone || "—")}</div>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById("print-id-btn").onclick = () => {
+      const cardHtml = document.getElementById("id-card-box").outerHTML;
+      const win = window.open("", "_blank");
+      if (!win) return ERP.showToast("Please allow pop-ups to print ID Card", "warning");
+      win.document.write(`<!DOCTYPE html><html><head><title>University ID Card</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>body{padding:30px;display:flex;justify-content:center;}</style></head><body>
+        <div style="width:380px">${cardHtml}</div></body></html>`);
+      win.document.close();
+      setTimeout(() => win.print(), 400);
+    };
+  }
+
   const tabHandlers = {
     overview: loadOverview,
     subjects: loadSubjects,
     attendance: loadAttendance,
     results: loadResults,
+    transcript: loadTranscript,
+    fees: loadFees,
+    notices: loadClassNotices,
+    idcard: loadIdCard,
     leaves: loadLeaves,
     feedback: loadFeedback,
     profile: async () => {
