@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
-from api.helpers import haversine_meters, require_fields, run_parallel, safe_error
+from api.helpers import require_fields, run_parallel, safe_error
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -220,8 +220,6 @@ def get_open_attendance_sessions():
                 "attendance_date": s["attendance_date"],
                 "topic": s.get("topic") or "",
                 "expires_at": s["expires_at"],
-                "requires_location": s.get("campus_lat") is not None and s.get("campus_lng") is not None,
-                "radius_meters": s.get("radius_meters") or 50,
                 "subjects": s.get("subjects"),
                 "teachers": s.get("teachers"),
                 "already_marked": s["id"] in marked_map,
@@ -280,31 +278,13 @@ def checkin_live_attendance():
             if not subj or subj.get("course_id") != student.get("course_id"):
                 return jsonify({"error": "You are not enrolled in this subject."}), 403
 
-        # Verify physical campus presence via either Campus GPS OR Teacher's live Class Code
+        # Verify classroom presence via Teacher's live Class Code
         provided_code = str(data.get("session_code") or "").strip().upper()
         expected_code = str(ats.get("session_code") or "").strip().upper()
-        code_valid = bool(expected_code and provided_code and provided_code == expected_code)
-
-        if not code_valid:
-            if ats.get("campus_lat") is not None and ats.get("campus_lng") is not None:
-                if data.get("latitude") is None or data.get("longitude") is None:
-                    if provided_code:
-                        return jsonify({"error": "Incorrect Class Code. Please check the code from your teacher."}), 403
-                    return jsonify({"error": "Allow location access or enter the Class Code from your teacher."}), 400
-                try:
-                    lat = float(data["latitude"])
-                    lng = float(data["longitude"])
-                except (TypeError, ValueError):
-                    return jsonify({"error": "Invalid location coordinates."}), 400
-
-                dist = haversine_meters(lat, lng, float(ats["campus_lat"]), float(ats["campus_lng"]))
-                allowed_m = float(ats.get("radius_meters") or 50)
-                if dist > allowed_m:
-                    return jsonify({
-                        "error": f"Outside campus ({int(dist)}m away; limit {int(allowed_m)}m). Enter your teacher's Class Code if you are in class on a PC."
-                    }), 403
-            elif expected_code:
-                return jsonify({"error": "Please enter the Class Code from your teacher."}), 403
+        if not provided_code:
+            return jsonify({"error": "Please enter the Class Code from your teacher."}), 400
+        if not expected_code or provided_code != expected_code:
+            return jsonify({"error": "Incorrect Class Code. Please check the code from your teacher."}), 403
 
         existing = (
             g.db.table("attendance_records")

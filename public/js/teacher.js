@@ -131,20 +131,20 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
           <div>
             <h5 class="fw-bold mb-0">Live Classroom Attendance Link</h5>
-            <div class="small text-muted">Open a timed link so students physically at the university can tick Present from their portal.</div>
+            <div class="small text-muted">Open a timed link and share the Class Code with students in class so they can tick Present.</div>
           </div>
           <button id="refresh-live-att" class="btn btn-outline-secondary btn-sm">Refresh</button>
         </div>
         <div class="row g-3 mb-3">
-          <div class="col-md-3">
+          <div class="col-md-4">
             <label class="form-label">Subject</label>
             <select id="live-sub" class="form-select">${subjects.map((s) => `<option value="${s.id}">${esc(s.name)} (${esc(s.code)})</option>`).join("")}</select>
           </div>
-          <div class="col-md-2">
+          <div class="col-md-3">
             <label class="form-label">Session</label>
             <select id="live-sess" class="form-select">${sessions.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join("")}</select>
           </div>
-          <div class="col-md-2">
+          <div class="col-md-3">
             <label class="form-label">Date</label>
             <input type="date" id="live-date" class="form-control" value="${today}">
           </div>
@@ -157,22 +157,12 @@
               <option value="30">30 mins</option>
             </select>
           </div>
-          <div class="col-md-3">
-            <label class="form-label">Classroom Radius</label>
-            <select id="live-rad" class="form-select">
-              <option value="20">20m (Exact Room)</option>
-              <option value="35">35m (Classroom)</option>
-              <option value="50" selected>50m (Max Allowed)</option>
-            </select>
-          </div>
-          <div class="col-md-6">
+          <div class="col-md-8">
             <input type="text" id="live-topic" class="form-control" placeholder="Lecture topic (optional)">
           </div>
-          <div class="col-md-6 d-flex flex-wrap gap-2">
-            <button id="use-my-loc" type="button" class="btn btn-outline-primary btn-sm">Use My Classroom GPS</button>
-            <button id="open-live-btn" type="button" class="btn btn-primary btn-sm">Open Attendance Link</button>
+          <div class="col-md-4 d-flex justify-content-md-end">
+            <button id="open-live-btn" type="button" class="btn btn-primary w-100">Open Attendance Link</button>
           </div>
-          <div id="live-loc-status" class="col-12 small text-muted">Using default University Campus coordinates (or click "Use My Classroom GPS").</div>
         </div>
 
         <div id="open-sessions-list">
@@ -185,7 +175,7 @@
                   <span class="badge bg-success me-1">OPEN</span>
                   <strong>${esc(os.subjects?.name)}</strong> (${esc(os.subjects?.code)}) &bull; ${esc(os.attendance_date)}
                   ${os.session_code ? `<span class="badge bg-dark ms-2">Class Code: ${esc(os.session_code)}</span>` : ""}
-                  <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)} &bull; Radius: ${os.radius_meters || 50}m</div>
+                  <div class="small text-muted">Checked in: <strong>${checkedIn}</strong> student(s) &bull; Expires at ${esc(expStr)}</div>
                 </div>
                 <button class="btn btn-danger btn-sm close-live-btn" data-id="${os.id}">Close Link &amp; Auto-Mark Absent</button>
               </div>`;
@@ -217,22 +207,6 @@
         <div id="att-students-area"></div>
       </div>`;
 
-    let customLat = null;
-    let customLng = null;
-    document.getElementById("use-my-loc").onclick = () => {
-      if (!navigator.geolocation) return ERP.showToast("Geolocation is not supported by this browser", "warning");
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          customLat = pos.coords.latitude;
-          customLng = pos.coords.longitude;
-          document.getElementById("live-loc-status").textContent = `Classroom GPS locked (${customLat.toFixed(5)}, ${customLng.toFixed(5)}).`;
-          ERP.showToast("Classroom GPS coordinates captured!");
-        },
-        () => ERP.showToast("Could not get GPS location. Default campus coordinates will be used.", "warning"),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    };
-
     document.getElementById("refresh-live-att").onclick = () => loadTakeAttendance(signal);
 
     document.getElementById("open-live-btn").onclick = async () => {
@@ -248,13 +222,10 @@
             attendance_date: document.getElementById("live-date").value,
             topic: document.getElementById("live-topic").value.trim(),
             duration_minutes: Number(document.getElementById("live-dur").value),
-            radius_meters: Number(document.getElementById("live-rad").value),
-            campus_lat: customLat,
-            campus_lng: customLng,
           }),
         });
         ERP.invalidateCache("/api/teacher/attendance");
-        ERP.showToast("Live attendance link opened for students!");
+        ERP.showToast("Live attendance link opened! Share the Class Code with students.");
         loadTakeAttendance(signal);
       } catch (err) { ERP.showToast(err.message, "danger"); }
     };

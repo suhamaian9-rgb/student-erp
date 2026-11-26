@@ -161,8 +161,8 @@
                       <input class="form-check-input live-att-tick" type="checkbox" id="tick-${os.id}">
                       <label class="form-check-label small fw-medium" for="tick-${os.id}">I am in class</label>
                     </div>
-                    <input type="text" class="form-control form-control-sm text-uppercase live-att-code" id="code-${os.id}" style="width: 145px;" maxlength="10" placeholder="Class Code (if PC)">
-                    <button class="btn btn-success btn-sm live-att-submit" data-id="${os.id}" data-loc="${os.requires_location ? "1" : "0"}">Submit Attendance</button>
+                    <input type="text" class="form-control form-control-sm text-uppercase live-att-code" id="code-${os.id}" style="width: 145px;" maxlength="10" placeholder="Enter Class Code" required>
+                    <button class="btn btn-success btn-sm live-att-submit" data-id="${os.id}">Submit Attendance</button>
                   </div>`}
               </div>`;
           }).join("")}
@@ -225,47 +225,29 @@
         if (!tick || !tick.checked) {
           return ERP.showToast("Please tick 'I am in class' first.", "warning");
         }
-        const needsLoc = btn.dataset.loc === "1";
+        if (!sessionCode) {
+          return ERP.showToast("Please enter the Class Code shown by your teacher.", "warning");
+        }
         btn.disabled = true;
-        btn.textContent = "Verifying...";
-        const submitCheckin = async (lat, lng) => {
-          try {
-            await ERP.api("/api/student/attendance/checkin", {
-              method: "POST",
-              body: JSON.stringify({
-                attendance_session_id: sid,
-                confirmed: true,
-                session_code: sessionCode || null,
-                latitude: lat,
-                longitude: lng,
-              }),
-            });
-            ERP.invalidateCache("/api/student/attendance");
-            ERP.invalidateCache("/api/student/stats");
-            ERP.showToast("Attendance marked Present!");
-            loadAttendance(signal);
-          } catch (err) {
-            ERP.showToast(err.message, "danger");
-            btn.disabled = false;
-            btn.textContent = "Submit Attendance";
-          }
-        };
-
-        if (sessionCode || !needsLoc) return submitCheckin(null, null);
-        if (!navigator.geolocation) {
+        btn.textContent = "Submitting...";
+        try {
+          await ERP.api("/api/student/attendance/checkin", {
+            method: "POST",
+            body: JSON.stringify({
+              attendance_session_id: sid,
+              confirmed: true,
+              session_code: sessionCode,
+            }),
+          });
+          ERP.invalidateCache("/api/student/attendance");
+          ERP.invalidateCache("/api/student/stats");
+          ERP.showToast("Attendance marked Present!");
+          loadAttendance(signal);
+        } catch (err) {
+          ERP.showToast(err.message, "danger");
           btn.disabled = false;
           btn.textContent = "Submit Attendance";
-          return ERP.showToast("Location is unavailable on this device. Enter the Class Code from your teacher.", "warning");
         }
-        navigator.geolocation.getCurrentPosition(
-          (pos) => submitCheckin(pos.coords.latitude, pos.coords.longitude),
-          () => {
-            btn.disabled = false;
-            btn.textContent = "Submit Attendance";
-            ERP.showToast("Location is off/denied. Enter the Class Code shown by your teacher.", "warning");
-          },
-          { enableHighAccuracy: true, timeout: 10000 }
-        );
       };
     });
   }

@@ -416,12 +416,7 @@ def test_security_csrf_csp_idor_and_input_validation(monkeypatch):
 
 
 def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
-    from api.helpers import haversine_meters
-
-    assert haversine_meters(22.5791, 89.9759, 22.5791, 89.9759) == 0.0
-    assert 100000 < haversine_meters(22.0, 89.0, 23.0, 89.0) < 120000
-
-    # 1. Teacher opens live attendance session
+    # 1. Teacher opens live attendance session (generates 6-char Class Code)
     fake_teacher_db, _ = _mock_auth(
         monkeypatch,
         role="teacher",
@@ -440,16 +435,14 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
             "session_id": 1,
             "attendance_date": "2026-11-26",
             "duration_minutes": 15,
-            "campus_lat": 22.5791,
-            "campus_lng": 89.9759,
-            "radius_meters": 500,
         },
     )
     assert open_resp.status_code == 201
-    assert fake_teacher_db.instances["attendance_sessions"].last_upsert[0]["is_open"] is True
-    assert fake_teacher_db.instances["attendance_sessions"].last_upsert[0]["radius_meters"] == 50
+    upserted = fake_teacher_db.instances["attendance_sessions"].last_upsert[0]
+    assert upserted["is_open"] is True
+    assert len(upserted["session_code"]) == 6
 
-    # 2. Student check-in: reject outside campus, accept inside campus
+    # 2. Student check-in: reject missing/wrong Class Code, accept valid Class Code
     _mock_auth(
         monkeypatch,
         role="student",
@@ -463,33 +456,28 @@ def test_live_classroom_attendance_open_checkin_and_close(monkeypatch):
                 "is_open": True,
                 "expires_at": "2099-01-01T00:00:00+00:00",
                 "session_code": "A1B2C3",
-                "campus_lat": 22.5791,
-                "campus_lng": 89.9759,
-                "radius_meters": 50,
             }],
             "attendance_records": [],
         },
     )
-    far = client.post(
+    no_code = client.post(
         "/api/student/attendance/checkin",
-        json={"attendance_session_id": 99, "confirmed": True, "latitude": 23.8103, "longitude": 90.4125},
+        json={"attendance_session_id": 99, "confirmed": True},
     )
-    assert far.status_code == 403
+    assert no_code.status_code == 400
 
-    # Check-in via Class Code works even without GPS (e.g. desktop PC)
+    wrong_code = client.post(
+        "/api/student/attendance/checkin",
+        json={"attendance_session_id": 99, "confirmed": True, "session_code": "ZZZZZZ"},
+    )
+    assert wrong_code.status_code == 403
+
     code_ok = client.post(
         "/api/student/attendance/checkin",
         json={"attendance_session_id": 99, "confirmed": True, "session_code": "a1b2c3"},
     )
     assert code_ok.status_code == 201
     assert code_ok.get_json()["status"] == "present"
-
-    near = client.post(
-        "/api/student/attendance/checkin",
-        json={"attendance_session_id": 99, "confirmed": True, "latitude": 22.5792, "longitude": 89.9760},
-    )
-    assert near.status_code == 201
-    assert near.get_json()["status"] == "present"
 
     # 3. Teacher closes session and auto-marks remaining students absent
     fake_close_db, _ = _mock_auth(

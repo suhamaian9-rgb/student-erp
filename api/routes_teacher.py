@@ -6,8 +6,6 @@ import secrets
 from flask import Blueprint, g, jsonify, request
 from api.auth_utils import require_role
 from api.helpers import (
-    DEFAULT_CAMPUS_LAT,
-    DEFAULT_CAMPUS_LNG,
     compute_grade,
     require_fields,
     run_parallel,
@@ -318,13 +316,6 @@ def open_live_attendance():
         except (TypeError, ValueError):
             duration_min = 10
 
-        try:
-            radius_m = min(50, max(5, int(data.get("radius_meters", 50))))
-        except (TypeError, ValueError):
-            radius_m = 50
-
-        campus_lat = float(data["campus_lat"]) if data.get("campus_lat") is not None else DEFAULT_CAMPUS_LAT
-        campus_lng = float(data["campus_lng"]) if data.get("campus_lng") is not None else DEFAULT_CAMPUS_LNG
         now = datetime.now(timezone.utc)
         expires_at = (now + timedelta(minutes=duration_min)).isoformat()
         code = secrets.token_hex(3).upper()
@@ -339,9 +330,8 @@ def open_live_attendance():
             "expires_at": expires_at,
             "closed_at": None,
             "session_code": code,
-            "campus_lat": campus_lat,
-            "campus_lng": campus_lng,
-            "radius_meters": radius_m,
+            "campus_lat": None,
+            "campus_lng": None,
             "updated_by": g.profile["id"],
         }
         resp = g.db.table("attendance_sessions").upsert(
