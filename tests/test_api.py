@@ -143,6 +143,15 @@ def test_public_endpoints_and_no_config_leak():
     assert client.get("/").status_code == 200
 
 
+def test_keepalive_endpoint(monkeypatch):
+    fake_db = _FakeDB({"departments": [{"id": 1}]})
+    monkeypatch.setattr("api.index.get_admin_client", lambda: fake_db)
+    client = app.test_client()
+    resp = client.get("/api/keepalive")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"status": "ok"}
+
+
 def test_auth_login_logout_and_guards():
     client = app.test_client()
     assert client.post("/api/auth/login", json={}).status_code == 400

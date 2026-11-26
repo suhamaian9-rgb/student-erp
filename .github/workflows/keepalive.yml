@@ -1,0 +1,17 @@
+name: Daily Keepalive Ping
+
+on:
+  schedule:
+    # Runs once every day at 03:17 UTC to keep Vercel and Supabase active
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping University ERP keepalive endpoint
+        run: |
+          curl -fsS --retry 3 --retry-delay 5 --max-time 30 \
+            "https://student-erp-delta.vercel.app/api/keepalive"
+          echo ""

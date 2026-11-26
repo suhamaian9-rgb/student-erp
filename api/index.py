@@ -150,6 +150,17 @@ def health_check():
     return jsonify({"status": "ok", "service": "University ERP"}), 200
 
 
+@app.route("/api/keepalive", methods=["GET"])
+def keepalive_ping():
+    """Execute a minimal read query so neither Vercel nor Supabase goes idle."""
+    try:
+        client = get_admin_client() or get_anon_client()
+        client.table("departments").select("id").limit(1).execute()
+        return jsonify({"status": "ok"}), 200
+    except Exception:
+        return jsonify({"status": "unavailable"}), 503
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def login_with_identifier():
     """Authenticate a user via username or email and set HttpOnly session cookies."""
